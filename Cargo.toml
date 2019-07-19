@@ -1,0 +1,10 @@
+[package]
+name = "carapace"
+version = "0.0.0"
+authors = ["Nugine <nugine@foxmail.com>"]
+edition = "2018"
+description = "code runner for online judge"
+license = "MIT"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
