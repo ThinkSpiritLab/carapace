@@ -5,11 +5,11 @@ pub use self::limit::TargetLimit;
 pub use self::status::TargetStatus;
 
 use std::fs::File;
-use std::os::unix::process::CommandExt;
+use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, ExitStatus};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
@@ -43,7 +43,7 @@ impl Target {
 }
 
 impl Target {
-    pub fn run(&self) -> Result<TargetStatus, std::io::Error> {
+    fn spawn(&self) -> Result<Pid, std::io::Error> {
         let mut cmd = Command::new(&self.bin_path);
         cmd.args(&self.arguments);
 
@@ -61,23 +61,60 @@ impl Target {
             cmd.stderr(File::create(error_path)?);
         }
 
-        let mut child = cmd.spawn()?;
-
-        let raw_pid = child.id() as i32;
-        let pid = Pid::from_raw(raw_pid);
+        let child = cmd.spawn()?;
+        let pid = Pid::from_raw(child.id() as i32);
 
         self.limit.max_real_time.map(|max_real_time| {
             thread::spawn(move || {
-                thread::sleep(Duration::from_millis(max_real_time));
+                thread::sleep(Duration::from_micros(max_real_time));
                 let _ = kill(pid, Signal::SIGKILL);
             })
         });
 
-        let status = child.wait()?;
+        Ok(pid)
+    }
+
+    fn wait(&self, pid: Pid) -> Result<TargetStatus, std::io::Error> {
+        let mut status = unsafe { std::mem::zeroed::<libc::c_int>() };
+        let mut ru = unsafe { std::mem::zeroed::<libc::rusage>() };
+        let t0 = SystemTime::now();
+
+        let p = unsafe {
+            libc::wait4(
+                pid.as_raw(),
+                &mut status as *mut libc::c_int,
+                libc::WSTOPPED,
+                &mut ru as *mut libc::rusage,
+            )
+        };
+
+        if p == -1 {
+            use std::io::{Error, ErrorKind};
+            return Err(Error::from(ErrorKind::Other));
+        }
+
+        let status = ExitStatus::from_raw(status);
+
+        let code = status.code();
+        let signal = status.signal().map(|s| Signal::from_c_int(s).unwrap());
+        let real_time = t0.elapsed().unwrap().as_micros() as u64;
+        let user_time = (ru.ru_utime.tv_sec as u64 * 1000_000) + (ru.ru_utime.tv_usec as u64);
+        let sys_time = (ru.ru_stime.tv_sec as u64 * 1000_000) + (ru.ru_stime.tv_usec as u64);
+        let memory = ru.ru_maxrss as u64;
 
         Ok(TargetStatus {
-            code: status.code(),
-            signal: None,
+            code,
+            signal,
+            real_time,
+            user_time,
+            sys_time,
+            memory,
         })
+    }
+}
+
+impl Target {
+    pub fn run(&self) -> Result<TargetStatus, std::io::Error> {
+        self.spawn().and_then(|pid| self.wait(pid))
     }
 }
