@@ -10,3 +10,4 @@ license = "MIT"
 [dependencies]
 nix = "0.14.1"
 libc = "0.2.60"
+rlimit = "0.2.1"
