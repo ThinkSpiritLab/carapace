@@ -11,7 +11,20 @@ pub struct TargetLimit {
 }
 
 impl TargetLimit {
-    pub(crate) fn apply_rlimit(&self) -> std::io::Result<()> {
+    pub fn new() -> Self {
+        TargetLimit {
+            max_real_time: None,
+            max_stack_size: None,
+            max_cpu_time: None,
+            max_process_number: None,
+            max_output_size: None,
+            max_memory: None,
+        }
+    }
+}
+
+impl TargetLimit {
+    pub(super) fn apply_rlimit(&self) -> std::io::Result<()> {
         if let Some(n) = self.max_cpu_time {
             RLimit::CPU.set(n, n)?;
         }

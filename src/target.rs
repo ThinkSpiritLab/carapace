@@ -1,7 +1,9 @@
 mod limit;
+mod rule;
 mod status;
 
 pub use self::limit::TargetLimit;
+pub use self::rule::{SeccompRule, TargetRule};
 pub use self::status::TargetStatus;
 
 use std::fs::File;
@@ -23,6 +25,7 @@ pub struct Target {
     pub output_path: Option<PathBuf>,
     pub error_path: Option<PathBuf>,
     pub limit: TargetLimit,
+    pub rule: TargetRule,
 }
 
 impl Target {
@@ -35,14 +38,8 @@ impl Target {
             input_path: None,
             output_path: None,
             error_path: None,
-            limit: TargetLimit {
-                max_real_time: None,
-                max_stack_size: None,
-                max_cpu_time: None,
-                max_process_number: None,
-                max_output_size: None,
-                max_memory: None,
-            },
+            limit: TargetLimit::new(),
+            rule: TargetRule::new(),
         }
     }
 }
@@ -68,7 +65,12 @@ impl Target {
 
         unsafe {
             let limit = Box::new(self.limit.clone());
-            cmd.pre_exec(move || limit.apply_rlimit());
+            let rule = Box::new(self.rule.clone());
+            cmd.pre_exec(move || {
+                limit.apply_rlimit()?;
+                rule.apply_seccomp()?;
+                Ok(())
+            });
         }
 
         let child = cmd.spawn()?;

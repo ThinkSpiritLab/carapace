@@ -19,7 +19,6 @@ fn test_tle_with_rlimit() {
     let status = target.run().unwrap();
     assert_eq!(status.code, None);
     assert_eq!(status.signal, Some(Signal::SIGKILL));
-    dbg!(&status);
     assert!((950_000..1050_000).contains(&status.real_time));
-    assert!((950_000..1000_000).contains(&status.user_time));
+    assert!((950_000..1050_000).contains(&status.user_time));
 }

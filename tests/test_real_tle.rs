@@ -8,5 +8,5 @@ fn test_real_tle() {
     let status = target.run().unwrap();
     assert_eq!(status.code, None);
     assert_eq!(status.signal, Some(Signal::SIGKILL));
-    assert!((1000_000..1005_000).contains(&status.real_time));
+    assert!((1000_000..1010_000).contains(&status.real_time));
 }
