@@ -37,13 +37,18 @@ impl Target {
             error_path: None,
             limit: TargetLimit {
                 max_real_time: None,
+                max_stack_size: None,
+                max_cpu_time: None,
+                max_process_number: None,
+                max_output_size: None,
+                max_memory: None,
             },
         }
     }
 }
 
 impl Target {
-    fn spawn(&self) -> Result<Pid, std::io::Error> {
+    fn spawn(&self) -> std::io::Result<Pid> {
         let mut cmd = Command::new(&self.bin_path);
         cmd.args(&self.arguments);
 
@@ -61,6 +66,11 @@ impl Target {
             cmd.stderr(File::create(error_path)?);
         }
 
+        unsafe {
+            let limit = Box::new(self.limit.clone());
+            cmd.pre_exec(move || limit.apply_rlimit());
+        }
+
         let child = cmd.spawn()?;
         let pid = Pid::from_raw(child.id() as i32);
 
@@ -74,7 +84,7 @@ impl Target {
         Ok(pid)
     }
 
-    fn wait(&self, pid: Pid) -> Result<TargetStatus, std::io::Error> {
+    fn wait(&self, pid: Pid) -> std::io::Result<TargetStatus> {
         let mut status = unsafe { std::mem::zeroed::<libc::c_int>() };
         let mut ru = unsafe { std::mem::zeroed::<libc::rusage>() };
         let t0 = SystemTime::now();
@@ -114,7 +124,7 @@ impl Target {
 }
 
 impl Target {
-    pub fn run(&self) -> Result<TargetStatus, std::io::Error> {
+    pub fn run(&self) -> std::io::Result<TargetStatus> {
         self.spawn().and_then(|pid| self.wait(pid))
     }
 }

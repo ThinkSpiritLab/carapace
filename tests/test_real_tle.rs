@@ -1,5 +1,4 @@
-use carapace::Target;
-use nix::sys::signal::Signal;
+use carapace::{Signal, Target};
 
 #[test]
 fn test_real_tle() {
@@ -8,6 +7,6 @@ fn test_real_tle() {
 
     let status = target.run().unwrap();
     assert_eq!(status.code, None);
-    assert_eq!(status.signal.unwrap(), Signal::SIGKILL);
+    assert_eq!(status.signal, Some(Signal::SIGKILL));
     assert!((1000_000..1005_000).contains(&status.real_time));
 }
