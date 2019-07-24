@@ -8,8 +8,6 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-nix = "0.14.1"
 libc = "0.2.60"
 rlimit = "0.2.1"
-syscallz = "0.11.4"
-rusty-fork = "0.2.2"
+syscallz = { path = "/home/nugine/project/syscallz-rs" }
