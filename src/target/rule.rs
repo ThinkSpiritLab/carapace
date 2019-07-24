@@ -1,14 +1,13 @@
-use std::io::Result;
 use syscallz::{Action, Comparator, Context, Syscall};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SeccompRule {
     pub action: Action,
     pub syscall: Syscall,
     pub comparators: Vec<Comparator>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct TargetRule {
     pub default_action: Option<Action>,
     pub seccomp_rules: Vec<SeccompRule>,
@@ -24,24 +23,31 @@ impl TargetRule {
 }
 
 impl TargetRule {
-    // syscallz::Error is not std::io::Error
-    fn wrapped_apply(&self) -> syscallz::Result<()> {
-        let defalut = match self.default_action {
-            None => return Ok(()),
-            Some(default) => default,
-        };
-
-        let mut ctx = Context::init_with_action(defalut)?;
-
-        for rule in &self.seccomp_rules {
-            ctx.set_rule_for_syscall(rule.action, rule.syscall, &rule.comparators)?;
+    pub(super) fn apply_seccomp(&self, extra_rules: &[SeccompRule]) -> std::io::Result<()> {
+        if self.default_action.is_none() && extra_rules.is_empty() {
+            return Ok(());
         }
 
-        ctx.load()
-    }
+        let default = self.default_action.unwrap_or(Action::Allow);
+        let mut ctx = Context::init_with_action(default)?;
 
-    pub(super) fn apply_seccomp(&self) -> Result<()> {
-        self.wrapped_apply()
-            .map_err(|_| std::io::Error::last_os_error())
+        for rule in self.seccomp_rules.iter().chain(extra_rules) {
+            if rule.comparators.is_empty() {
+                ctx.set_action_for_syscall(rule.action, rule.syscall)?;
+            } else {
+                for comp in &rule.comparators {
+                    let res = ctx.set_rule_for_syscall(
+                        rule.action,
+                        rule.syscall,
+                        std::slice::from_ref(comp),
+                    );
+                    dbg!((comp, &res));
+                    res?;
+                }
+            }
+        }
+
+        ctx.load()?;
+        Ok(())
     }
 }

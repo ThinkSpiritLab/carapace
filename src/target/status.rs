@@ -1,9 +1,7 @@
-use nix::sys::signal::Signal;
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TargetStatus {
     pub code: Option<i32>,
-    pub signal: Option<Signal>,
+    pub signal: Option<i32>,
     pub real_time: u64, // in microseconds
     pub user_time: u64, // in microseconds
     pub sys_time: u64,  // in microseconds
