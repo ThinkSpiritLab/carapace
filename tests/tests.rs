@@ -2,7 +2,7 @@ mod test_hello {
     use carapace::syscallz::{Action, Syscall};
     use carapace::Target;
 
-    const BIN: &'static str = "./tests/bin/hello";
+    const BIN: &str = "./tests/bin/hello";
 
     #[test]
     fn test_hello_raw() {
@@ -28,7 +28,7 @@ mod test_fork {
     use carapace::syscallz::{Action, Syscall};
     use carapace::Target;
 
-    const BIN: &'static str = "./tests/bin/fork";
+    const BIN: &str = "./tests/bin/fork";
 
     #[test]
     fn test_fork_raw() {
@@ -65,7 +65,7 @@ mod test_fork {
 mod test_mle {
     use carapace::Target;
 
-    const BIN: &'static str = "./tests/bin/mle";
+    const BIN: &str = "./tests/bin/mle";
 
     #[test]
     fn test_mle_raw() {
@@ -93,7 +93,7 @@ mod test_mle {
 mod test_real_tle {
     use carapace::Target;
 
-    const BIN: &'static str = "./tests/bin/real_tle";
+    const BIN: &str = "./tests/bin/real_tle";
 
     #[test]
     fn test_real_tle_raw() {
@@ -111,7 +111,7 @@ mod test_real_tle {
 mod test_tle {
     use carapace::Target;
 
-    const BIN: &'static str = "./tests/bin/tle";
+    const BIN: &str = "./tests/bin/tle";
 
     #[test]
     fn test_tle_raw() {
@@ -142,7 +142,7 @@ mod test_tle {
 mod test_execvp {
     use carapace::Target;
 
-    const BIN: &'static str = "./tests/bin/execvp";
+    const BIN: &str = "./tests/bin/execvp";
 
     #[test]
     fn test_execvp_raw() {
@@ -170,7 +170,7 @@ mod test_forkbomb {
     use carapace::syscallz::{Action, Syscall};
     use carapace::Target;
 
-    const BIN: &'static str = "./tests/bin/forkbomb";
+    const BIN: &str = "./tests/bin/forkbomb";
 
     #[test]
     fn test_forkbomb_with_rlimit() {
@@ -192,5 +192,23 @@ mod test_forkbomb {
         let status = target.run().unwrap();
         assert_eq!(status.code, None);
         assert_eq!(status.signal, Some(libc::SIGSYS));
+    }
+}
+
+mod test_bigfile {
+    use carapace::Target;
+
+    const BIN: &str = "gcc";
+    const ARG: &str = "./tests/case/bigfile.c";
+
+    #[test]
+    fn test_bigfile_with_rlimit() {
+        let mut target = Target::new(BIN).unwrap();
+        target.add_arg(ARG).unwrap();
+        target.limit.max_memory = Some(256 * 1024 * 1024);
+
+        let status = target.run().unwrap();
+        assert_eq!(status.code, Some(1));
+        assert_eq!(status.signal, None);
     }
 }
