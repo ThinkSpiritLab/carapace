@@ -9,14 +9,14 @@ pub struct SeccompRule {
 
 #[derive(Debug, Clone)]
 pub struct TargetRule {
-    pub default_action: Option<Action>,
+    pub default_action: Action,
     pub seccomp_rules: Vec<SeccompRule>,
 }
 
 impl TargetRule {
     pub fn new() -> Self {
         Self {
-            default_action: None,
+            default_action: Action::Allow,
             seccomp_rules: vec![],
         }
     }
@@ -24,12 +24,13 @@ impl TargetRule {
 
 impl TargetRule {
     pub(super) fn apply_seccomp(&self, extra_rules: &[SeccompRule]) -> std::io::Result<()> {
-        if self.default_action.is_none() && extra_rules.is_empty() {
-            return Ok(());
+        if let Action::Allow = self.default_action{
+            if self.seccomp_rules.is_empty(){
+                return Ok(())
+            }
         }
 
-        let default = self.default_action.unwrap_or(Action::Allow);
-        let mut ctx = Context::init_with_action(default)?;
+        let mut ctx = Context::init_with_action(self.default_action)?;
 
         for rule in self.seccomp_rules.iter().chain(extra_rules) {
             if rule.comparators.is_empty() {

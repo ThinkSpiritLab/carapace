@@ -91,8 +91,7 @@ impl Target {
 
         let extra_rules = {
             let execve_rule = {
-                let act = self.rule.default_action.unwrap_or(Action::Allow);
-                if let Action::Allow = act {
+                if let Action::Allow = self.rule.default_action {
                     if self.allow_target_execve {
                         None
                     } else {
