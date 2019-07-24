@@ -7,6 +7,17 @@ pub struct SeccompRule {
     pub comparators: Vec<Comparator>,
 }
 
+impl SeccompRule {
+    #[inline]
+    pub fn without_comparators(action: Action, syscall: Syscall) -> Self {
+        Self {
+            action,
+            syscall,
+            comparators: vec![],
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TargetRule {
     pub default_action: Action,
@@ -20,13 +31,22 @@ impl TargetRule {
             seccomp_rules: vec![],
         }
     }
+
+    pub fn add_action(&mut self, action: Action, syscall: Syscall) {
+        self.seccomp_rules
+            .push(SeccompRule::without_comparators(action, syscall));
+    }
+
+    pub fn add_rule(&mut self, rule: SeccompRule) {
+        self.seccomp_rules.push(rule);
+    }
 }
 
 impl TargetRule {
     pub(super) fn apply_seccomp(&self, extra_rules: &[SeccompRule]) -> std::io::Result<()> {
-        if let Action::Allow = self.default_action{
-            if self.seccomp_rules.is_empty(){
-                return Ok(())
+        if let Action::Allow = self.default_action {
+            if self.seccomp_rules.is_empty() && extra_rules.is_empty() {
+                return Ok(());
             }
         }
 
@@ -37,13 +57,11 @@ impl TargetRule {
                 ctx.set_action_for_syscall(rule.action, rule.syscall)?;
             } else {
                 for comp in &rule.comparators {
-                    let res = ctx.set_rule_for_syscall(
+                    ctx.set_rule_for_syscall(
                         rule.action,
                         rule.syscall,
                         std::slice::from_ref(comp),
-                    );
-                    dbg!((comp, &res));
-                    res?;
+                    )?;
                 }
             }
         }
