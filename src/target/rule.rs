@@ -32,6 +32,13 @@ impl TargetRule {
         }
     }
 
+    pub fn from_default_action(action: Action) -> Self {
+        Self {
+            default_action: action,
+            seccomp_rules: vec![],
+        }
+    }
+
     pub fn add_action(&mut self, action: Action, syscall: Syscall) {
         self.seccomp_rules
             .push(SeccompRule::without_comparators(action, syscall));

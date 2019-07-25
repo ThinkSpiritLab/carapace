@@ -3,6 +3,7 @@ use super::rule::{SeccompRule, TargetRule};
 use super::status::TargetStatus;
 
 use std::ffi::{CString, NulError};
+use std::io::{Error as IOError, Result as IOResult};
 use std::thread;
 use std::time::SystemTime;
 
@@ -12,6 +13,7 @@ use syscallz::{Action, Cmp, Comparator, Syscall};
 pub struct Target {
     pub bin_path: CString,
     pub args: Vec<CString>,
+    pub envs: Vec<CString>,
     pub uid: Option<u32>,
     pub gid: Option<u32>,
     pub input_path: Option<CString>,
@@ -20,6 +22,7 @@ pub struct Target {
     pub limit: TargetLimit,
     pub rule: TargetRule,
     pub allow_target_execve: bool,
+    pub allow_inherited_env: bool,
 }
 
 impl Target {
@@ -27,6 +30,7 @@ impl Target {
         Ok(Self {
             bin_path: CString::new(bin_path)?,
             args: vec![],
+            envs: vec![],
             uid: None,
             gid: None,
             input_path: None,
@@ -35,11 +39,16 @@ impl Target {
             limit: TargetLimit::new(),
             rule: TargetRule::new(),
             allow_target_execve: true,
+            allow_inherited_env: true,
         })
     }
 
     pub fn add_arg(&mut self, arg: &str) -> Result<(), NulError> {
         Ok(self.args.push(CString::new(arg)?))
+    }
+
+    pub fn add_env(&mut self, env: &str) -> Result<(), NulError> {
+        Ok(self.envs.push(CString::new(env)?))
     }
 
     pub fn stdin(&mut self, input_path: &str) -> Result<(), NulError> {
@@ -60,29 +69,27 @@ unsafe fn get_errno() -> c_int {
     *libc::__errno_location()
 }
 
-unsafe fn fopen_fd(path: *const c_char, mode: *const c_char) -> c_int {
-    let ptr = libc::fopen(path, mode);
-    if ptr as u32 == libc::PT_NULL {
-        return get_errno();
-    }
-    let ret = libc::fileno(ptr);
-    if ret < 0 {
-        return get_errno();
-    }
-    return ret;
-}
-
 #[inline(always)]
-fn check_os_error(ret: libc::c_int) -> std::io::Result<libc::c_int> {
+fn check_os_error(ret: libc::c_int) -> IOResult<libc::c_int> {
     if ret < 0 {
-        return Err(std::io::Error::last_os_error());
+        return Err(IOError::last_os_error());
     } else {
         Ok(ret)
     }
 }
 
+unsafe fn open_read_fd(path: *const c_char) -> c_int {
+    use libc::{AT_FDCWD, O_RDONLY};
+    libc::openat(AT_FDCWD, path, O_RDONLY, 0o666)
+}
+
+unsafe fn open_write_fd(path: *const c_char) -> c_int {
+    use libc::{AT_FDCWD, O_CREAT, O_TRUNC, O_WRONLY};
+    libc::openat(AT_FDCWD, path, O_WRONLY | O_CREAT | O_TRUNC, 0o666)
+}
+
 impl Target {
-    unsafe fn apply_settings(&self, extra_rules: &[SeccompRule]) -> std::io::Result<()> {
+    unsafe fn apply_settings(&self, extra_rules: &[SeccompRule]) -> IOResult<()> {
         if let Some(uid) = self.uid {
             check_os_error(libc::setuid(uid))?;
         }
@@ -92,28 +99,19 @@ impl Target {
         }
 
         if let Some(ref input_path) = self.input_path {
-            let input_fd = check_os_error(fopen_fd(
-                input_path.as_ptr(),
-                b"r\0".as_ptr() as *const c_char,
-            ))?;
+            let input_fd = check_os_error(open_read_fd(input_path.as_ptr()))?;
             let stdin_fd = libc::STDIN_FILENO;
             check_os_error(libc::dup2(input_fd, stdin_fd))?;
         }
 
         if let Some(ref output_path) = self.output_path {
-            let output_fd = check_os_error(fopen_fd(
-                output_path.as_ptr(),
-                b"w\0".as_ptr() as *const c_char,
-            ))?;
+            let output_fd = check_os_error(open_write_fd(output_path.as_ptr()))?;
             let stdout_fd = libc::STDOUT_FILENO;
             check_os_error(libc::dup2(output_fd, stdout_fd))?;
         }
 
         if let Some(ref error_path) = self.error_path {
-            let error_fd = check_os_error(fopen_fd(
-                error_path.as_ptr(),
-                b"w\0".as_ptr() as *const c_char,
-            ))?;
+            let error_fd = check_os_error(open_write_fd(error_path.as_ptr()))?;
             let stderr_fd = libc::STDERR_FILENO;
             check_os_error(libc::dup2(error_fd, stderr_fd))?;
         }
@@ -123,13 +121,39 @@ impl Target {
         Ok(())
     }
 
-    fn spawn(&self) -> std::io::Result<libc::pid_t> {
+    fn spawn(&self) -> IOResult<libc::pid_t> {
         let argv = {
             let mut argv: Vec<*const c_char> = Vec::with_capacity(self.args.len() + 2);
             argv.push(self.bin_path.as_ptr());
             argv.extend(self.args.iter().map(|s| s.as_ptr()));
             argv.push(libc::PT_NULL as *const c_char);
             argv
+        };
+
+        let envp = {
+            if self.allow_inherited_env && self.envs.is_empty() {
+                None
+            } else {
+                let mut envp: Vec<*const c_char> = Vec::new();
+
+                if self.allow_inherited_env {
+                    unsafe {
+                        extern "C" {
+                            static mut environ: *const *const c_char;
+                        }
+                        use std::ptr::null;
+                        let mut ptr = environ;
+                        while ptr != null() && *ptr != null() {
+                            envp.push(*ptr);
+                            ptr = ptr.offset(1);
+                        }
+                    }
+                }
+
+                envp.extend(self.envs.iter().map(|s| s.as_ptr()));
+                envp.push(libc::PT_NULL as *const c_char);
+                Some(envp)
+            }
         };
 
         let extra_rules = {
@@ -190,7 +214,13 @@ impl Target {
                 let _ = libc::close(tx_fd);
 
                 if errno == 0 {
-                    libc::execvp(argv[0], argv.as_ptr()); // child process ends here on success
+                    if let Some(envp) = envp {
+                        libc::execve(argv[0], argv.as_ptr(), envp.as_ptr());
+                    } else {
+                        libc::execvp(argv[0], argv.as_ptr());
+                    }
+                    // child process ends here on success
+
                     errno = get_errno();
                 }
 
@@ -211,7 +241,7 @@ impl Target {
                 if ret < 0 {
                     let errno = get_errno();
                     let _ = libc::kill(pid, libc::SIGKILL);
-                    return Err(std::io::Error::from_raw_os_error(errno)); // error of libc::read
+                    return Err(IOError::from_raw_os_error(errno)); // error of libc::read
                 }
 
                 let errno = i32::from_ne_bytes(bytes);
@@ -219,13 +249,13 @@ impl Target {
                 if errno == 0 {
                     Ok(pid)
                 } else {
-                    Err(std::io::Error::from_raw_os_error(errno))
+                    Err(IOError::from_raw_os_error(errno))
                 }
             }
         }
     }
 
-    fn wait(&self, pid: libc::pid_t) -> std::io::Result<TargetStatus> {
+    fn wait(&self, pid: libc::pid_t) -> IOResult<TargetStatus> {
         if let Some(max_real_time) = self.limit.max_real_time {
             thread::Builder::new().spawn(move || unsafe {
                 let _ = libc::usleep(max_real_time);
@@ -247,7 +277,7 @@ impl Target {
             if ret < 0 {
                 let errno = get_errno();
                 let _ = libc::kill(pid, libc::SIGKILL);
-                return Err(std::io::Error::from_raw_os_error(errno)); // error of libc::wait4
+                return Err(IOError::from_raw_os_error(errno)); // error of libc::wait4
             }
         }
 
@@ -281,7 +311,7 @@ impl Target {
 }
 
 impl Target {
-    pub fn run(&self) -> std::io::Result<TargetStatus> {
+    pub fn run(&self) -> IOResult<TargetStatus> {
         self.wait(self.spawn()?)
     }
 }
