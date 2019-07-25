@@ -2,8 +2,6 @@ use super::limit::TargetLimit;
 use super::rule::{SeccompRule, TargetRule};
 use super::status::TargetStatus;
 
-use crate::check_os_error;
-
 use std::ffi::{CString, NulError};
 use std::thread;
 use std::time::SystemTime;
@@ -74,6 +72,15 @@ unsafe fn fopen_fd(path: *const c_char, mode: *const c_char) -> c_int {
     return ret;
 }
 
+#[inline(always)]
+fn check_os_error(ret: libc::c_int) -> std::io::Result<libc::c_int> {
+    if ret < 0 {
+        return Err(std::io::Error::last_os_error());
+    } else {
+        Ok(ret)
+    }
+}
+
 impl Target {
     unsafe fn apply_settings(&self, extra_rules: &[SeccompRule]) -> std::io::Result<()> {
         if let Some(uid) = self.uid {
@@ -116,7 +123,7 @@ impl Target {
         Ok(())
     }
 
-    unsafe fn spawn(&self) -> std::io::Result<libc::pid_t> {
+    fn spawn(&self) -> std::io::Result<libc::pid_t> {
         let argv = {
             let mut argv: Vec<*const c_char> = Vec::with_capacity(self.args.len() + 2);
             argv.push(self.bin_path.as_ptr());
@@ -159,97 +166,105 @@ impl Target {
         };
 
         // create pipe: child -> parent
-        let (rx_fd, tx_fd) = {
+        let (rx_fd, tx_fd) = unsafe {
             let mut fds: [c_int; 2] = [0; 2];
             check_os_error(libc::pipe(fds.as_mut_ptr()))?;
             (fds[0], fds[1])
         };
 
-        let ret = check_os_error(libc::fork())?;
+        let ret = unsafe { check_os_error(libc::fork())? };
 
         if ret == 0 {
             // child process
-            let _ = libc::close(rx_fd);
+            unsafe {
+                let _ = libc::close(rx_fd);
 
-            let mut errno = match self.apply_settings(extra_rules.as_slice()) {
-                Ok(_) => 0,
-                Err(err) => err.raw_os_error().unwrap(), // assert: `err` is raw os error
-            };
+                let mut errno = match self.apply_settings(extra_rules.as_slice()) {
+                    Ok(_) => 0,
+                    Err(err) => err.raw_os_error().unwrap(), // assert: `err` is raw os error
+                };
 
-            // send errno
-            let bytes = (errno as i32).to_ne_bytes();
-            let _ = libc::write(tx_fd, bytes.as_ptr() as *const libc::c_void, bytes.len());
-            let _ = libc::close(tx_fd);
+                // send errno
+                let bytes = (errno as i32).to_ne_bytes();
+                let _ = libc::write(tx_fd, bytes.as_ptr() as *const libc::c_void, bytes.len());
+                let _ = libc::close(tx_fd);
 
-            if errno == 0 {
-                libc::execvp(argv[0], argv.as_ptr()); // child process ends here on success
-                errno = get_errno();
+                if errno == 0 {
+                    libc::execvp(argv[0], argv.as_ptr()); // child process ends here on success
+                    errno = get_errno();
+                }
+
+                libc::exit(errno)
             }
-
-            libc::exit(errno)
         } else {
             // parent process
-            let _ = libc::close(tx_fd);
+            unsafe {
+                let _ = libc::close(tx_fd);
 
-            let pid = ret;
+                let pid = ret;
 
-            // receive errno
-            let mut bytes: [u8; 4] = [0; 4];
-            let ret = libc::read(rx_fd, bytes.as_mut_ptr() as *mut libc::c_void, bytes.len());
-            let _ = libc::close(rx_fd);
+                // receive errno
+                let mut bytes: [u8; 4] = [0; 4];
+                let ret = libc::read(rx_fd, bytes.as_mut_ptr() as *mut libc::c_void, bytes.len());
+                let _ = libc::close(rx_fd);
 
-            if ret < 0 {
-                let errno = get_errno();
-                let _ = libc::kill(pid, libc::SIGKILL);
-                return Err(std::io::Error::from_raw_os_error(errno)); // error of libc::read
-            }
+                if ret < 0 {
+                    let errno = get_errno();
+                    let _ = libc::kill(pid, libc::SIGKILL);
+                    return Err(std::io::Error::from_raw_os_error(errno)); // error of libc::read
+                }
 
-            let errno = i32::from_ne_bytes(bytes);
+                let errno = i32::from_ne_bytes(bytes);
 
-            if errno == 0 {
-                Ok(pid)
-            } else {
-                Err(std::io::Error::from_raw_os_error(errno))
+                if errno == 0 {
+                    Ok(pid)
+                } else {
+                    Err(std::io::Error::from_raw_os_error(errno))
+                }
             }
         }
     }
 
-    unsafe fn wait(&self, pid: libc::pid_t) -> std::io::Result<TargetStatus> {
+    fn wait(&self, pid: libc::pid_t) -> std::io::Result<TargetStatus> {
         if let Some(max_real_time) = self.limit.max_real_time {
-            thread::Builder::new().spawn(move || {
+            thread::Builder::new().spawn(move || unsafe {
                 let _ = libc::usleep(max_real_time);
                 let _ = libc::kill(pid, libc::SIGKILL);
             })?;
         }
 
-        let mut status = std::mem::zeroed::<c_int>();
-        let mut ru = std::mem::zeroed::<libc::rusage>();
+        let mut status = unsafe { std::mem::zeroed::<c_int>() };
+        let mut ru = unsafe { std::mem::zeroed::<libc::rusage>() };
         let t0 = SystemTime::now();
 
-        let ret = libc::wait4(
-            pid,
-            &mut status as *mut c_int,
-            libc::WSTOPPED,
-            &mut ru as *mut libc::rusage,
-        );
-        if ret < 0 {
-            let errno = get_errno();
-            let _ = libc::kill(pid, libc::SIGKILL);
-            return Err(std::io::Error::from_raw_os_error(errno)); // error of libc::wait4
+        unsafe {
+            let ret = libc::wait4(
+                pid,
+                &mut status as *mut c_int,
+                libc::WSTOPPED,
+                &mut ru as *mut libc::rusage,
+            );
+            if ret < 0 {
+                let errno = get_errno();
+                let _ = libc::kill(pid, libc::SIGKILL);
+                return Err(std::io::Error::from_raw_os_error(errno)); // error of libc::wait4
+            }
         }
 
         let real_time = t0.elapsed().unwrap().as_micros() as u64;
         let code;
         let signal;
-
-        let exited = libc::WIFEXITED(status);
-        if exited {
-            code = Some(libc::WEXITSTATUS(status));
-            signal = None;
-        } else {
-            code = None;
-            signal = Some(libc::WTERMSIG(status));
+        unsafe {
+            let exited = libc::WIFEXITED(status);
+            if exited {
+                code = Some(libc::WEXITSTATUS(status));
+                signal = None;
+            } else {
+                code = None;
+                signal = Some(libc::WTERMSIG(status));
+            }
         }
+
         let user_time = (ru.ru_utime.tv_sec as u64 * 1000_000) + (ru.ru_utime.tv_usec as u64);
         let sys_time = (ru.ru_stime.tv_sec as u64 * 1000_000) + (ru.ru_stime.tv_usec as u64);
         let memory = ru.ru_maxrss as u64;
@@ -267,6 +282,6 @@ impl Target {
 
 impl Target {
     pub fn run(&self) -> std::io::Result<TargetStatus> {
-        unsafe { self.wait(self.spawn()?) }
+        self.wait(self.spawn()?)
     }
 }
