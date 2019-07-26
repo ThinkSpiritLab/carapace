@@ -60,7 +60,7 @@ struct Opt {
 #[structopt(rename_all = "kebab-case")]
 struct LimitOpt {
     #[structopt(long, value_name = "microseconds")]
-    max_real_time: Option<u32>, // in microseconds
+    max_real_time: Option<u64>, // in microseconds
 
     #[structopt(long, value_name = "seconds")]
     max_cpu_time: Option<u64>, // in seconds
@@ -120,5 +120,5 @@ fn main() -> std::io::Result<()> {
         serde_json::to_string(&status).expect("json error")
     };
 
-    Ok(println!("{}", output))
+    Ok(eprintln!("{}", output))
 }

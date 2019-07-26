@@ -18,3 +18,7 @@ serde_json = "1.0"
 [[bin]]
 name = "carapace"
 path = "src/bin/cli.rs"
+
+[[bin]]
+name = "runalg"
+path = "src/bin/runalg.rs"

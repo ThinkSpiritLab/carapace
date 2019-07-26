@@ -262,7 +262,7 @@ impl Target {
     fn wait(&self, pid: libc::pid_t) -> IOResult<TargetStatus> {
         if let Some(max_real_time) = self.limit.max_real_time {
             thread::Builder::new().spawn(move || unsafe {
-                let _ = libc::usleep(max_real_time);
+                let _ = libc::usleep(max_real_time as u32);
                 let _ = libc::kill(pid, libc::SIGKILL);
             })?;
         }

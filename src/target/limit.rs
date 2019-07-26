@@ -2,7 +2,7 @@ use rlimit::RLimit;
 
 #[derive(Debug, Clone)]
 pub struct TargetLimit {
-    pub max_real_time: Option<u32>,   // in microseconds
+    pub max_real_time: Option<u64>,   // in microseconds
     pub max_cpu_time: Option<u64>,    // in seconds
     pub max_memory: Option<u64>,      // in bytes
     pub max_output_size: Option<u64>, // in bytes
