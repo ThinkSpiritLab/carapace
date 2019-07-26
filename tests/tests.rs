@@ -9,7 +9,7 @@ mod test_hello {
     #[test]
     fn test_hello_raw() {
         let mut target = Target::new(BIN).unwrap();
-        target.stdout("/dev/null").unwrap();
+        target.set_stdout("/dev/null").unwrap();
 
         let status = target.run().unwrap();
         assert_eq!(status.code, Some(0));
@@ -44,7 +44,7 @@ mod test_fork {
     #[test]
     fn test_fork_raw() {
         let mut target = Target::new(BIN).unwrap();
-        target.stdout("/dev/null").unwrap();
+        target.set_stdout("/dev/null").unwrap();
 
         let status = target.run().unwrap();
         assert_eq!(status.code, Some(0));
@@ -55,7 +55,7 @@ mod test_fork {
     fn test_fork_with_rlimit() {
         let mut target = Target::new(BIN).unwrap();
         target.limit.max_process_number = Some(1);
-        target.stdout("/dev/null").unwrap();
+        target.set_stdout("/dev/null").unwrap();
 
         let status = target.run().unwrap();
         assert_eq!(status.code, Some(1));
@@ -66,7 +66,7 @@ mod test_fork {
     fn test_fork_with_seccomp() {
         let mut target = Target::new(BIN).unwrap();
         target.rule.add_action(Action::Kill, Syscall::clone);
-        target.stdout("/dev/null").unwrap();
+        target.set_stdout("/dev/null").unwrap();
 
         let status = target.run().unwrap();
         assert_eq!(status.code, None);
@@ -197,7 +197,7 @@ mod test_execvp {
     fn test_execvp_raw() {
         let mut target = Target::new(BIN).unwrap();
         target.limit.max_real_time = Some(1000_000);
-        target.stdout("/dev/null").unwrap();
+        target.set_stdout("/dev/null").unwrap();
 
         let status = target.run().unwrap();
         assert_eq!(status.code, None);
@@ -207,8 +207,8 @@ mod test_execvp {
     #[test]
     fn test_execvp_with_seccomp() {
         let mut target = Target::new(BIN).unwrap();
-        target.allow_target_execve = false;
-        target.stdout("/dev/null").unwrap();
+        target.forbid_target_execve = true;
+        target.set_stdout("/dev/null").unwrap();
 
         let status = target.run().unwrap();
         assert_eq!(status.code, None);
@@ -292,9 +292,9 @@ mod test_all_c_cpp {
 
         target.envs.push(getPATH().unwrap());
 
-        target.stdin("/dev/null").unwrap();
-        target.stdout("/dev/null").unwrap();
-        target.stderr("/dev/null").unwrap();
+        target.set_stdin("/dev/null").unwrap();
+        target.set_stdout("/dev/null").unwrap();
+        target.set_stderr("/dev/null").unwrap();
 
         target.limit.max_real_time = Some(1000_000);
         target.limit.max_memory = Some(256 * 1024 * 1024);
@@ -305,8 +305,8 @@ mod test_all_c_cpp {
 
         target.rule.add_action(Action::Allow, Syscall::ioctl); // for /dev/null
 
-        target.allow_inherited_env = false;
-        target.allow_target_execve = false;
+        target.forbid_inherited_env = true;
+        target.forbid_target_execve = true;
 
         configure(&mut target);
         let status = target.run().unwrap();

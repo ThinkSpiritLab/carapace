@@ -16,31 +16,35 @@ pub struct Target {
     pub envs: Vec<CString>,
     pub uid: Option<u32>,
     pub gid: Option<u32>,
-    pub input_path: Option<CString>,
-    pub output_path: Option<CString>,
-    pub error_path: Option<CString>,
+    pub stdin: Option<CString>,
+    pub stdout: Option<CString>,
+    pub stderr: Option<CString>,
     pub limit: TargetLimit,
     pub rule: TargetRule,
-    pub allow_target_execve: bool,
-    pub allow_inherited_env: bool,
+    pub forbid_target_execve: bool,
+    pub forbid_inherited_env: bool,
 }
 
 impl Target {
-    pub fn new(bin_path: &str) -> Result<Self, NulError> {
-        Ok(Self {
-            bin_path: CString::new(bin_path)?,
+    pub fn from_bin_path(bin_path: CString) -> Self {
+        Self {
+            bin_path,
             args: vec![],
             envs: vec![],
             uid: None,
             gid: None,
-            input_path: None,
-            output_path: None,
-            error_path: None,
+            stdin: None,
+            stdout: None,
+            stderr: None,
             limit: TargetLimit::new(),
             rule: TargetRule::new(),
-            allow_target_execve: true,
-            allow_inherited_env: true,
-        })
+            forbid_target_execve: false,
+            forbid_inherited_env: false,
+        }
+    }
+
+    pub fn new(bin_path: &str) -> Result<Self, NulError> {
+        Ok(Self::from_bin_path(CString::new(bin_path)?))
     }
 
     pub fn add_arg(&mut self, arg: &str) -> Result<(), NulError> {
@@ -51,16 +55,16 @@ impl Target {
         Ok(self.envs.push(CString::new(env)?))
     }
 
-    pub fn stdin(&mut self, input_path: &str) -> Result<(), NulError> {
-        Ok(self.input_path = Some(CString::new(input_path)?))
+    pub fn set_stdin(&mut self, input_path: &str) -> Result<(), NulError> {
+        Ok(self.stdin = Some(CString::new(input_path)?))
     }
 
-    pub fn stdout(&mut self, output_path: &str) -> Result<(), NulError> {
-        Ok(self.output_path = Some(CString::new(output_path)?))
+    pub fn set_stdout(&mut self, output_path: &str) -> Result<(), NulError> {
+        Ok(self.stdout = Some(CString::new(output_path)?))
     }
 
-    pub fn stderr(&mut self, error_path: &str) -> Result<(), NulError> {
-        Ok(self.error_path = Some(CString::new(error_path)?))
+    pub fn set_stderr(&mut self, error_path: &str) -> Result<(), NulError> {
+        Ok(self.stderr = Some(CString::new(error_path)?))
     }
 }
 
@@ -98,19 +102,19 @@ impl Target {
             check_os_error(libc::setgid(gid))?;
         }
 
-        if let Some(ref input_path) = self.input_path {
+        if let Some(ref input_path) = self.stdin {
             let input_fd = check_os_error(open_read_fd(input_path.as_ptr()))?;
             let stdin_fd = libc::STDIN_FILENO;
             check_os_error(libc::dup2(input_fd, stdin_fd))?;
         }
 
-        if let Some(ref output_path) = self.output_path {
+        if let Some(ref output_path) = self.stdout {
             let output_fd = check_os_error(open_write_fd(output_path.as_ptr()))?;
             let stdout_fd = libc::STDOUT_FILENO;
             check_os_error(libc::dup2(output_fd, stdout_fd))?;
         }
 
-        if let Some(ref error_path) = self.error_path {
+        if let Some(ref error_path) = self.stderr {
             let error_fd = check_os_error(open_write_fd(error_path.as_ptr()))?;
             let stderr_fd = libc::STDERR_FILENO;
             check_os_error(libc::dup2(error_fd, stderr_fd))?;
@@ -131,12 +135,12 @@ impl Target {
         };
 
         let envp = {
-            if self.allow_inherited_env && self.envs.is_empty() {
+            if !self.forbid_inherited_env && self.envs.is_empty() {
                 None
             } else {
                 let mut envp: Vec<*const c_char> = Vec::new();
 
-                if self.allow_inherited_env {
+                if !self.forbid_inherited_env {
                     unsafe {
                         extern "C" {
                             static mut environ: *const *const c_char;
@@ -159,7 +163,7 @@ impl Target {
         let extra_rules = {
             let execve_rule = {
                 if let Action::Allow = self.rule.default_action {
-                    if self.allow_target_execve {
+                    if !self.forbid_target_execve {
                         None
                     } else {
                         Some(SeccompRule {
@@ -175,7 +179,7 @@ impl Target {
                         comparators: vec![],
                     };
 
-                    if !self.allow_target_execve {
+                    if self.forbid_target_execve {
                         rule.comparators
                             .push(Comparator::new(0, Cmp::Eq, argv[0] as u64, 0));
                     }

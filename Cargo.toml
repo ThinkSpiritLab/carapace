@@ -3,7 +3,7 @@ name = "carapace"
 version = "0.0.0"
 authors = ["Nugine <nugine@foxmail.com>"]
 edition = "2018"
-description = "code runner for online judge"
+description = "A code runner for online judge"
 license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -11,3 +11,10 @@ license = "MIT"
 libc = "0.2.60"
 rlimit = "0.2.1"
 syscallz = { path = "/home/nugine/project/syscallz-rs" }
+structopt = "0.2.18"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[[bin]]
+name = "carapace"
+path = "src/bin/cli.rs"

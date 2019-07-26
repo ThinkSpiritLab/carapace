@@ -1,4 +1,6 @@
-#[derive(Debug, Clone)]
+use serde::Serialize;
+
+#[derive(Debug, Clone, Serialize)]
 pub struct TargetStatus {
     pub code: Option<i32>,
     pub signal: Option<i32>,
