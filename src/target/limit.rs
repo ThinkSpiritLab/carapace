@@ -1,4 +1,4 @@
-use rlimit::RLimit;
+use rlimit::Resource;
 
 #[derive(Debug, Clone)]
 pub struct TargetLimit {
@@ -26,23 +26,23 @@ impl TargetLimit {
 impl TargetLimit {
     pub(super) fn apply_rlimit(&self) -> std::io::Result<()> {
         if let Some(n) = self.max_cpu_time {
-            RLimit::CPU.set(n, n)?;
+            Resource::CPU.set(n, n)?;
         }
 
         if let Some(n) = self.max_memory {
-            RLimit::AS.set(n, n)?;
+            Resource::AS.set(n, n)?;
         }
 
         if let Some(n) = self.max_output_size {
-            RLimit::FSIZE.set(n, n)?;
+            Resource::FSIZE.set(n, n)?;
         }
 
         if let Some(n) = self.max_process_number {
-            RLimit::NPROC.set(n, n)?;
+            Resource::NPROC.set(n, n)?;
         }
 
         if let Some(n) = self.max_stack_size {
-            RLimit::STACK.set(n, n)?;
+            Resource::STACK.set(n, n)?;
         }
         Ok(())
     }

@@ -27,7 +27,7 @@ name = "carapace"
 version = "0.0.0"
 dependencies = [
  "libc 0.2.60 (registry+https://github.com/rust-lang/crates.io-index)",
- "rlimit 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rlimit 0.3.0",
  "serde 1.0.97 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "structopt 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -97,9 +97,9 @@ dependencies = [
 
 [[package]]
 name = "rlimit"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
+version = "0.3.0"
 dependencies = [
+ "cfg-if 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.60 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -265,7 +265,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum log 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)" = "c275b6ad54070ac2d665eef9197db647b32239c9d244bfb6f041a766d00da5b3"
 "checksum proc-macro2 0.4.30 (registry+https://github.com/rust-lang/crates.io-index)" = "cf3d2011ab5c909338f7887f4fc896d35932e29146c12c8d01da6b22a80ba759"
 "checksum quote 0.6.13 (registry+https://github.com/rust-lang/crates.io-index)" = "6ce23b6b870e8f94f81fb0a363d65d86675884b34a09043c81e5562f11c1f8e1"
-"checksum rlimit 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "008f2f59aca31438dc2bfa06e4f224dfd0dcd89e93f8d9906a012d4cd233f3b3"
 "checksum ryu 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "c92464b447c0ee8c4fb3824ecc8383b81717b9f1e74ba2e72540aef7b9f82997"
 "checksum seccomp-sys 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "0d4082b110d25cf281ddbf78dc56e1a65c929fd72ac6c2deb1a4c20a23999dfa"
 "checksum serde 1.0.97 (registry+https://github.com/rust-lang/crates.io-index)" = "d46b3dfedb19360a74316866cef04687cd4d6a70df8e6a506c63512790769b72"

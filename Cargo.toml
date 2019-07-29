@@ -9,7 +9,8 @@ license = "MIT"
 
 [dependencies]
 libc = "0.2.60"
-rlimit = "0.2.1"
+# rlimit = "0.2.1"
+rlimit = { path = "/home/nugine/project/rlimit" }
 syscallz = { path = "/home/nugine/project/syscallz-rs" }
 structopt = "0.2.18"
 serde = { version = "1.0", features = ["derive"] }
