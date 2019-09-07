@@ -9,9 +9,8 @@ license = "MIT"
 
 [dependencies]
 libc = "0.2.60"
-# rlimit = "0.2.1"
-rlimit = { path = "/home/nugine/project/rlimit" }
-syscallz = { path = "/home/nugine/project/syscallz-rs" }
+rlimit = "0.3.0"
+syscallz = { git = "https://github.com/Nugine/syscallz-rs.git", rev = "a4de572"}
 structopt = "0.2.18"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
