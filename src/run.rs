@@ -16,7 +16,7 @@ use anyhow::{Context, Result};
 use nix::fcntl::{self, OFlag};
 use nix::sched::CloneFlags;
 use nix::sys::stat::Mode;
-use nix::unistd::{self, Gid, Pid, Uid};
+use nix::unistd::{self, AccessFlags, Gid, Pid, Uid};
 use rlimit::{Resource, Rlim};
 use scopeguard::guard;
 use tracing::{trace, warn};
@@ -170,24 +170,26 @@ fn run_child(config: &SandboxConfig, cgroup: &Cgroup) -> Result<Infallible> {
 
     redirect_stdio(config)?;
     set_hard_rlimit(config)?;
+
     let exec = prepare_execve_args(config)?;
 
     cg_setup_child(config, cgroup, child_pid).context("failed to setup cgroup")?;
     cg_reset_metrics(cgroup).context("failed to reset cgroup metrics")?;
 
-    if let Some(gid) = config.gid.map(Gid::from_raw) {
-        unistd::setgroups(&[gid]).context("failed to set groups")?;
-        unistd::setgid(gid).context("failed to set gid")?;
+    if let Some(ref new_root) = config.chroot {
+        unistd::chroot(new_root).context("failed to chroot")?;
+        unistd::chdir("/")?;
     }
 
-    if let Some(uid) = config.uid.map(Uid::from_raw) {
-        unistd::setuid(uid).context("failed to set uid")?;
-    }
+    unistd::access(&config.bin, AccessFlags::F_OK)
+        .with_context(|| format!("failed to access file: path = {}", config.bin.display()))?;
+
+    set_id(config)?;
 
     unsafe { libc::execve(exec.bin, exec.args.as_ptr(), exec.env.as_ptr()) };
 
     Err(io::Error::last_os_error())
-        .with_context(|| format!("failed to execvp: bin = {:?}", config.bin))
+        .with_context(|| format!("failed to execve: bin = {:?}", config.bin))
 }
 
 fn redirect_stdio(config: &SandboxConfig) -> Result<()> {
@@ -326,5 +328,18 @@ fn cg_setup_child(config: &SandboxConfig, cg: &Cgroup, child_pid: Pid) -> Result
 fn cg_reset_metrics(cg: &Cgroup) -> Result<()> {
     Cgroup::write_type(cg.cpu(), "cpuacct.usage", 0)?;
     Cgroup::write_type(cg.memory(), "memory.max_usage_in_bytes", 0)?;
+    Ok(())
+}
+
+fn set_id(config: &SandboxConfig) -> Result<()> {
+    if let Some(gid) = config.gid.map(Gid::from_raw) {
+        unistd::setgroups(&[gid]).context("failed to set groups")?;
+        unistd::setgid(gid).context("failed to set gid")?;
+    }
+
+    if let Some(uid) = config.uid.map(Uid::from_raw) {
+        unistd::setuid(uid).context("failed to set uid")?;
+    }
+
     Ok(())
 }
