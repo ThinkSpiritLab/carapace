@@ -5,7 +5,7 @@ use std::{fmt, fs, io};
 
 use anyhow::{Context, Result};
 use nix::sys::stat::Mode;
-use nix::unistd::{self, AccessFlags, Pid};
+use nix::unistd::{self, AccessFlags};
 use tracing::trace;
 
 pub struct Cgroup {
@@ -53,10 +53,10 @@ impl Cgroup {
         fs::remove_dir(cg_dir)
     }
 
-    pub fn add_pid(cg_dir: &str, pid: Pid) -> io::Result<()> {
-        let path = format!("{}/tasks", cg_dir);
+    pub fn add_self_proc(cg_dir: &str) -> io::Result<()> {
+        let path = format!("{}/cgroup.procs", cg_dir);
         let mut file = fs::OpenOptions::new().append(true).open(path)?;
-        write!(file, "{}", pid)?;
+        write!(file, "0")?;
         Ok(())
     }
 

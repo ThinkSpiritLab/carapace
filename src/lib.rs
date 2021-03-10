@@ -117,7 +117,6 @@ impl BindMount {
 pub struct SandboxOutput {
     pub code: i32,
     pub signal: i32,
-    pub status: i32,
 
     pub real_time: u64, // milliseconds
     pub sys_time: u64,  // milliseconds

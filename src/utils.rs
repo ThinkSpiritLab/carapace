@@ -1,10 +1,9 @@
-use std::mem::{ManuallyDrop, MaybeUninit};
+use std::mem::{self, ManuallyDrop};
 use std::panic::{self, AssertUnwindSafe};
 use std::{io, ptr};
 
 use nix::sched::CloneFlags;
 use nix::unistd::Pid;
-use tracing::trace;
 
 pub type RawFd = std::os::unix::io::RawFd;
 
@@ -16,24 +15,39 @@ pub fn libc_call(f: impl FnOnce() -> i32) -> io::Result<u32> {
     Ok(ret as u32)
 }
 
-pub fn wait4(child_pid: Pid) -> io::Result<(i32, libc::rusage)> {
-    let pid = child_pid.as_raw();
-    let mut status: i32 = 0;
-    let mut rusage: MaybeUninit<libc::rusage> = MaybeUninit::zeroed();
+pub fn wait_child(child_pid: Pid) -> io::Result<(i32, i32)> {
+    unsafe fn waitid(
+        pid: u32,
+        info: &mut libc::siginfo_t,
+        nohang: bool,
+    ) -> io::Result<Option<(i32, i32)>> {
+        let options = if nohang {
+            libc::WEXITED | libc::WNOHANG
+        } else {
+            libc::WEXITED
+        };
 
-    loop {
-        let ret = libc_call(|| unsafe {
-            libc::wait4(pid, &mut status, libc::WUNTRACED, rusage.as_mut_ptr())
-        })?;
+        libc_call(|| libc::waitid(libc::P_PID, pid, info, options))?;
 
-        trace!("wait4 ret = {}, status = {}", ret, status);
-
-        if ret > 0 {
-            break;
+        if info.si_pid() > 0 {
+            if info.si_code == libc::CLD_EXITED {
+                Ok(Some((info.si_status(), 0)))
+            } else {
+                Ok(Some((0, info.si_status())))
+            }
+        } else {
+            Ok(None)
         }
     }
 
-    unsafe { Ok((status, rusage.assume_init())) }
+    let pid = child_pid.as_raw() as u32;
+    let mut info: libc::siginfo_t = unsafe { mem::zeroed() };
+
+    loop {
+        if let Some(ret) = unsafe { waitid(pid, &mut info, false)? } {
+            return Ok(ret);
+        }
+    }
 }
 
 pub unsafe fn clone_proc<F: FnOnce() -> libc::c_int>(

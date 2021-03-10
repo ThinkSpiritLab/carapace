@@ -116,7 +116,6 @@ async fn t01_empty() -> Result<()> {
     test_hack(name, src, bin, args, |output| {
         assert_eq!(output.code, 0);
         assert_eq!(output.signal, 0);
-        assert_eq!(output.status, 0);
 
         assert_le!(output.real_time, 50);
         assert_eq!(output.sys_time, 0);
@@ -140,9 +139,8 @@ async fn t02_sleep() -> Result<()> {
     test_hack(name, src, bin, args, |output| {
         assert_eq!(output.code, 0);
         assert_eq!(output.signal, 9);
-        assert_eq!(output.status, 9);
 
-        assert_le!(output.real_time, 1050);
+        assert_le!(output.real_time, 1000 + 100);
         assert_eq!(output.sys_time, 0);
         assert_le!(output.user_time, 1);
         assert_le!(output.memory, 400);
@@ -166,9 +164,8 @@ async fn t03_forkbomb() -> Result<()> {
     test_hack(name, src, bin, args, |output| {
         assert_eq!(output.code, 0);
         assert_eq!(output.signal, 9);
-        assert_eq!(output.status, 9);
 
-        assert_le!(output.real_time, 1050);
+        assert_le!(output.real_time, 1000 + 100);
         assert_eq!(output.sys_time, 0);
         assert_le!(output.user_time, 3000);
     })
@@ -184,7 +181,7 @@ async fn t04_includebomb() -> Result<()> {
         if output.code == 0 {
             assert!(output.memory >= 256 * 1024);
         }
-        assert_le!(output.real_time, 3010);
+        assert_le!(output.real_time, 3000 + 100);
     })
 }
 
@@ -204,9 +201,8 @@ async fn t05_oom() -> Result<()> {
     test_hack(name, src, bin, args, |output| {
         assert_eq!(output.code, 0);
         assert_eq!(output.signal, 9);
-        assert_eq!(output.status, 9);
 
-        assert_le!(output.real_time, 1020);
+        assert_le!(output.real_time, 1000 + 100);
         assert_eq!(output.sys_time, 0);
         assert_le!(output.user_time, 1000);
     })

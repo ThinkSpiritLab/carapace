@@ -1,7 +1,7 @@
 use crate::cgroup_v1::Cgroup;
 use crate::pipe::{self, PipeRx};
 use crate::signal;
-use crate::utils::{self, libc_call, RawFd};
+use crate::utils::{self, RawFd};
 use crate::{SandboxConfig, SandboxOutput};
 
 use std::convert::Infallible;
@@ -82,18 +82,13 @@ fn run_parent(
 
     child_result.context("child process failed")?;
 
-    let (status, rusage) = utils::wait4(child_pid).context("failed to wait4")?;
+    let wait_t0 = Instant::now();
+    let (code, signal) = utils::wait_child(child_pid).context("failed to wait4")?;
+    let wait_duration = wait_t0.elapsed();
     let real_duration = t0.elapsed();
-    let real_time: u64 = real_duration.as_millis() as u64;
-
-    trace!(?real_duration, ?status, ?rusage);
-
     drop(killer);
 
-    let code = libc::WEXITSTATUS(status);
-    let signal = libc::WTERMSIG(status);
-
-    trace!(?code, ?signal);
+    trace!(?code, ?signal, ?real_duration, ?wait_duration);
 
     let m = {
         let ret1 = cg_collect(&cgroup).context("failed to collect metrics from cgroup");
@@ -104,8 +99,7 @@ fn run_parent(
     Ok(SandboxOutput {
         code,
         signal,
-        status,
-        real_time,
+        real_time: real_duration.as_millis() as u64,
         sys_time: m.sys_time / 1_000_000,   // ns => ms
         user_time: m.user_time / 1_000_000, // ns => ms
         memory: m.memory / 1024,            // bytes => KiB
@@ -147,6 +141,7 @@ fn cg_cleanup(cg: Cgroup) -> Result<()> {
                 pids.push(Pid::from_raw(pid))
             }
         }
+        trace!(?pids);
         signal::killall(&pids);
     }
 
@@ -164,16 +159,12 @@ fn cg_cleanup(cg: Cgroup) -> Result<()> {
 }
 
 fn run_child(config: &SandboxConfig, cgroup: &Cgroup) -> Result<Infallible> {
-    let child_pid = unistd::getpid();
-
-    libc_call(|| unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) })?;
-
     redirect_stdio(config)?;
     set_hard_rlimit(config)?;
 
     let exec = prepare_execve_args(config)?;
 
-    cg_setup_child(config, cgroup, child_pid).context("failed to setup cgroup")?;
+    cg_setup_child(config, cgroup).context("failed to setup cgroup")?;
     cg_reset_metrics(cgroup).context("failed to reset cgroup metrics")?;
 
     if let Some(ref new_root) = config.chroot {
@@ -307,9 +298,9 @@ fn prepare_execve_args(config: &SandboxConfig) -> Result<ExecveArgs> {
     })
 }
 
-fn cg_setup_child(config: &SandboxConfig, cg: &Cgroup, child_pid: Pid) -> Result<()> {
-    Cgroup::add_pid(cg.cpu(), child_pid).context("failed to add pid to cpu cgroup")?;
-    Cgroup::add_pid(cg.memory(), child_pid).context("failed to add pid to memory cgroup")?;
+fn cg_setup_child(config: &SandboxConfig, cg: &Cgroup) -> Result<()> {
+    Cgroup::add_self_proc(cg.cpu()).context("failed to add self to cpu cgroup")?;
+    Cgroup::add_self_proc(cg.memory()).context("failed to add self to memory cgroup")?;
 
     if let Some(memory_limit) = config.cg_limit_memory {
         Cgroup::write_type(cg.memory(), "memory.limit_in_bytes", memory_limit)
@@ -319,7 +310,7 @@ fn cg_setup_child(config: &SandboxConfig, cg: &Cgroup, child_pid: Pid) -> Result
     if let Some(pids_max) = config.cg_limit_max_pids {
         Cgroup::write_type(cg.pids(), "pids.max", pids_max)
             .context("failed to set max pids limit")?;
-        Cgroup::add_pid(cg.pids(), child_pid).context("failed to add pid to pids cgroup")?;
+        Cgroup::add_self_proc(cg.pids()).context("failed to add self to pids cgroup")?;
     }
 
     Ok(())
