@@ -118,7 +118,7 @@ async fn t01_empty() -> Result<()> {
         assert_eq!(output.signal, 0);
         assert_eq!(output.status, 0);
 
-        assert_le!(output.real_time, 10);
+        assert_le!(output.real_time, 50);
         assert_eq!(output.sys_time, 0);
         assert_le!(output.user_time, 1);
         assert_le!(output.memory, 400);
@@ -142,7 +142,7 @@ async fn t02_sleep() -> Result<()> {
         assert_eq!(output.signal, 9);
         assert_eq!(output.status, 9);
 
-        assert_le!(output.real_time, 1020);
+        assert_le!(output.real_time, 1050);
         assert_eq!(output.sys_time, 0);
         assert_le!(output.user_time, 1);
         assert_le!(output.memory, 400);
@@ -168,7 +168,7 @@ async fn t03_forkbomb() -> Result<()> {
         assert_eq!(output.signal, 9);
         assert_eq!(output.status, 9);
 
-        assert_le!(output.real_time, 1020);
+        assert_le!(output.real_time, 1050);
         assert_eq!(output.sys_time, 0);
         assert_le!(output.user_time, 3000);
     })

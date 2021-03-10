@@ -5,9 +5,11 @@ authors = ["Nugine <Nugine@163.com>"]
 edition = "2018"
 
 [dependencies]
+aligned-utils = "1.0.2"
 anyhow = "1.0.38"
 dotenv = "0.15.0"
 libc = "0.2.88"
+memchr = "2.3.4"
 nix = "0.20.0"
 rand = "0.8.3"
 rlimit = "0.5.4"

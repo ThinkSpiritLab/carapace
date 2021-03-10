@@ -1,21 +1,26 @@
 #![deny(clippy::all)]
 
+#[macro_use]
+mod utils;
+
 mod cgroup_v1;
 mod pipe;
 mod run;
 mod signal;
-mod utils;
 
 pub use crate::run::run;
 
 use crate::utils::RawFd;
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
+use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 
+use anyhow::Result;
+use memchr::memchr;
 use serde::{Deserialize, Serialize};
-use structopt::StructOpt;
 use structopt::clap;
+use structopt::StructOpt;
 
 #[derive(Debug, Default, Serialize, Deserialize, StructOpt)]
 #[structopt(setting = clap::AppSettings::DeriveDisplayOrder)]
@@ -74,6 +79,38 @@ pub struct SandboxConfig {
 
     #[structopt(long, value_name = "count")]
     pub cg_limit_max_pids: Option<u32>,
+
+    #[structopt(long, value_name = "bind mount", parse(try_from_os_str = BindMount::try_from_os_str))]
+    pub bind_mount_rw: Vec<BindMount>,
+
+    #[structopt(long, value_name = "bind mount", parse(try_from_os_str = BindMount::try_from_os_str))]
+    pub bind_mount_ro: Vec<BindMount>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BindMount {
+    pub src: PathBuf,
+    pub dst: PathBuf,
+}
+
+impl BindMount {
+    fn try_from_os_str(s: &OsStr) -> Result<Self, OsString> {
+        let (src, dst) = match memchr(b':', s.as_bytes()) {
+            Some(idx) => {
+                let src = OsStr::from_bytes(&s.as_bytes()[..idx]);
+                let dst = OsStr::from_bytes(&s.as_bytes()[idx + 1..]);
+                if src.is_empty() || dst.is_empty() {
+                    return Err("invalid bind mount format".into());
+                }
+                (src, dst)
+            }
+            None => (s, s),
+        };
+        Ok(BindMount {
+            src: src.into(),
+            dst: dst.into(),
+        })
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

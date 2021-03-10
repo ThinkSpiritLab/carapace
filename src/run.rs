@@ -9,10 +9,12 @@ use std::ffi::CString;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::PathBuf;
 use std::time::Instant;
-use std::{env, io, process, ptr};
+use std::{env, io, ptr};
 
+use aligned_utils::bytes::AlignedBytes;
 use anyhow::{Context, Result};
 use nix::fcntl::{self, OFlag};
+use nix::sched::CloneFlags;
 use nix::sys::stat::Mode;
 use nix::unistd::{self, Gid, Pid, Uid};
 use rlimit::{Resource, Rlim};
@@ -20,8 +22,6 @@ use scopeguard::guard;
 use tracing::{trace, warn};
 
 pub fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
-    validate(config)?;
-
     let cgroup = {
         let nonce: u32 = rand::random();
         let cg_name = format!("carapace_{}", nonce);
@@ -30,31 +30,34 @@ pub fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
 
     let (pipe_tx, pipe_rx) = pipe::create().context("failed to create pipe")?;
 
-    let t0 = Instant::now();
-
-    match unsafe { unistd::fork() }.context("failed to fork")? {
-        unistd::ForkResult::Parent { child: child_pid } => {
-            drop(pipe_tx);
-            run_parent(config, child_pid, t0, pipe_rx, cgroup)
-        }
-        unistd::ForkResult::Child => {
+    let (t0, child_pid) = {
+        let clone_cb = || unsafe {
+            let pipe_tx = ptr::read(&pipe_tx);
+            let pipe_rx = ptr::read(&pipe_rx);
             drop(pipe_rx);
-            let result = run_child(&config, cgroup);
+            let result = run_child(&config, &cgroup);
             let _ = pipe_tx.write_error(result.unwrap_err());
-            process::exit(101);
-        }
-    }
-}
+            101
+        };
 
-fn validate(config: &SandboxConfig) -> Result<()> {
-    if !config.bin.exists() {
-        anyhow::bail!(
-            "binary file does not exist: path = {}",
-            config.bin.display()
-        );
-    }
+        let mut stack = AlignedBytes::new_zeroed(128 * 1024, 16);
 
-    Ok(())
+        let mut flags = CloneFlags::CLONE_NEWNS;
+        flags |= CloneFlags::CLONE_NEWUTS;
+        flags |= CloneFlags::CLONE_NEWIPC;
+        flags |= CloneFlags::CLONE_NEWPID;
+        flags |= CloneFlags::CLONE_NEWNET;
+
+        let t0 = Instant::now();
+
+        let child_pid = unsafe { utils::clone_proc(clone_cb, &mut *stack, flags, libc::SIGCHLD) }
+            .context("failed to fork")?;
+
+        (t0, child_pid)
+    };
+
+    drop(pipe_tx);
+    run_parent(config, child_pid, t0, pipe_rx, cgroup)
 }
 
 fn run_parent(
@@ -83,17 +86,14 @@ fn run_parent(
     let real_duration = t0.elapsed();
     let real_time: u64 = real_duration.as_millis() as u64;
 
-    trace!(?status);
-    trace!(?rusage);
-    trace!(?real_duration);
+    trace!(?real_duration, ?status, ?rusage);
 
     drop(killer);
 
     let code = libc::WEXITSTATUS(status);
     let signal = libc::WTERMSIG(status);
 
-    trace!(?code);
-    trace!(?signal);
+    trace!(?code, ?signal);
 
     let m = {
         let ret1 = cg_collect(&cgroup).context("failed to collect metrics from cgroup");
@@ -163,7 +163,7 @@ fn cg_cleanup(cg: Cgroup) -> Result<()> {
     Ok(())
 }
 
-fn run_child(config: &SandboxConfig, cgroup: Cgroup) -> Result<Infallible> {
+fn run_child(config: &SandboxConfig, cgroup: &Cgroup) -> Result<Infallible> {
     let child_pid = unistd::getpid();
 
     libc_call(|| unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) })?;
@@ -172,8 +172,8 @@ fn run_child(config: &SandboxConfig, cgroup: Cgroup) -> Result<Infallible> {
     set_hard_rlimit(config)?;
     let exec = prepare_execve_args(config)?;
 
-    cg_setup_child(config, &cgroup, child_pid).context("failed to setup cgroup")?;
-    cg_reset_metrics(&cgroup).context("failed to reset cgroup metrics")?;
+    cg_setup_child(config, cgroup, child_pid).context("failed to setup cgroup")?;
+    cg_reset_metrics(cgroup).context("failed to reset cgroup metrics")?;
 
     if let Some(gid) = config.gid.map(Gid::from_raw) {
         unistd::setgroups(&[gid]).context("failed to set groups")?;
