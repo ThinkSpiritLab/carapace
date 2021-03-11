@@ -69,6 +69,8 @@ dependencies = [
  "libc",
  "memchr",
  "nix",
+ "once_cell",
+ "path-absolutize",
  "rand",
  "rlimit",
  "scopeguard",
@@ -243,6 +245,24 @@ name = "once_cell"
 version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af8b08b04175473088b46763e51ee54da5f9a164bc162f615b91bc179dbf15a3"
+
+[[package]]
+name = "path-absolutize"
+version = "3.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a6ab2aaa5faefed84db46e4398eab15fa51325606462b5da8b0e230af3ac59a"
+dependencies = [
+ "path-dedot",
+]
+
+[[package]]
+name = "path-dedot"
+version = "3.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "658c6e985fce9c25289fe7c86c08a3cbe82c19a3cd5b3bc5945c8c632552e460"
+dependencies = [
+ "once_cell",
+]
 
 [[package]]
 name = "pin-project-lite"

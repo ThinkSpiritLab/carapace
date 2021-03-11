@@ -1,9 +1,16 @@
+use std::ffi::{CStr, CString};
 use std::mem::{self, ManuallyDrop};
+use std::os::unix::ffi::OsStrExt;
 use std::panic::{self, AssertUnwindSafe};
-use std::{io, ptr};
+use std::path::Path;
+use std::{fs, io, ptr};
 
+use anyhow::Result;
+use nix::fcntl::{self, OFlag};
 use nix::sched::CloneFlags;
-use nix::unistd::Pid;
+use nix::sys::stat::Mode;
+use nix::unistd::{self, AccessFlags, Pid};
+use nix::NixPath;
 
 pub type RawFd = std::os::unix::io::RawFd;
 
@@ -79,4 +86,49 @@ pub unsafe fn clone_proc<F: FnOnce() -> libc::c_int>(
     });
 
     Ok(Pid::from_raw(ret? as _))
+}
+
+pub fn is_dir(path: &(impl NixPath + ?Sized)) -> nix::Result<bool> {
+    nix::sys::stat::stat(path).map(|stat| stat.st_mode & libc::S_IFMT == libc::S_IFDIR)
+}
+
+pub fn bind_mount(src_path: &Path, dst_path: &Path, recursive: bool, readonly: bool) -> Result<()> {
+    let src: &CStr = &CString::new(src_path.as_os_str().as_bytes())?;
+    let dst: &CStr = &CString::new(dst_path.as_os_str().as_bytes())?;
+
+    let src_is_dir = is_dir(src)?;
+
+    let dst_exists = unistd::access(dst, AccessFlags::F_OK).is_ok();
+
+    if !dst_exists {
+        if src_is_dir {
+            fs::create_dir_all(dst_path)?;
+        } else {
+            if let Some(parent_dir) = dst_path.parent() {
+                fs::create_dir_all(parent_dir)?;
+            }
+            let fd = fcntl::open(
+                dst,
+                OFlag::O_CREAT | OFlag::O_RDONLY | OFlag::O_CLOEXEC,
+                Mode::from_bits_truncate(0o644),
+            )?;
+            let _ = unistd::close(fd);
+        }
+    }
+
+    let do_mount = |flags| unsafe {
+        libc_call(|| libc::mount(src.as_ptr(), dst.as_ptr(), ptr::null(), flags, ptr::null()))
+    };
+
+    do_mount(if recursive {
+        libc::MS_BIND | libc::MS_REC
+    } else {
+        libc::MS_BIND
+    })?;
+
+    if readonly {
+        do_mount(libc::MS_REMOUNT | libc::MS_BIND | libc::MS_RDONLY)?;
+    }
+
+    Ok(())
 }

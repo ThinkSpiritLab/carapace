@@ -4,10 +4,11 @@ use crate::signal;
 use crate::utils::{self, RawFd};
 use crate::{SandboxConfig, SandboxOutput};
 
+use std::borrow::Cow;
 use std::convert::Infallible;
-use std::ffi::CString;
+use std::ffi::{CString, OsString};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 use std::{env, io, ptr};
 
@@ -17,11 +18,14 @@ use nix::fcntl::{self, OFlag};
 use nix::sched::CloneFlags;
 use nix::sys::stat::Mode;
 use nix::unistd::{self, AccessFlags, Gid, Pid, Uid};
+use path_absolutize::Absolutize;
 use rlimit::{Resource, Rlim};
 use scopeguard::guard;
 use tracing::{trace, warn};
 
 pub fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
+    validate(&config)?;
+
     let cgroup = {
         let nonce: u32 = rand::random();
         let cg_name = format!("carapace_{}", nonce);
@@ -42,11 +46,11 @@ pub fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
 
         let mut stack = AlignedBytes::new_zeroed(128 * 1024, 16);
 
-        let mut flags = CloneFlags::CLONE_NEWNS;
-        flags |= CloneFlags::CLONE_NEWUTS;
-        flags |= CloneFlags::CLONE_NEWIPC;
-        flags |= CloneFlags::CLONE_NEWPID;
-        flags |= CloneFlags::CLONE_NEWNET;
+        let flags: CloneFlags = CloneFlags::CLONE_NEWNS
+            | CloneFlags::CLONE_NEWUTS
+            | CloneFlags::CLONE_NEWIPC
+            | CloneFlags::CLONE_NEWPID
+            | CloneFlags::CLONE_NEWNET;
 
         let t0 = Instant::now();
 
@@ -58,6 +62,16 @@ pub fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
 
     drop(pipe_tx);
     run_parent(config, child_pid, t0, pipe_rx, cgroup)
+}
+
+fn validate(config: &SandboxConfig) -> Result<()> {
+    for mnt in config.bindmount_rw.iter().chain(config.bindmount_ro.iter()) {
+        if !mnt.src.is_absolute() || !mnt.dst.is_absolute() {
+            anyhow::bail!("bind mount path must be absolute")
+        }
+    }
+
+    Ok(())
 }
 
 fn run_parent(
@@ -160,11 +174,15 @@ fn cg_cleanup(cg: Cgroup) -> Result<()> {
 
 fn run_child(config: &SandboxConfig, cgroup: &Cgroup) -> Result<Infallible> {
     redirect_stdio(config)?;
-    set_hard_rlimit(config)?;
+
+    do_mount(&config)?;
 
     let exec = prepare_execve_args(config)?;
 
     cg_setup_child(config, cgroup).context("failed to setup cgroup")?;
+
+    set_hard_rlimit(config)?;
+
     cg_reset_metrics(cgroup).context("failed to reset cgroup metrics")?;
 
     if let Some(ref new_root) = config.chroot {
@@ -225,6 +243,51 @@ fn redirect_stdio(config: &SandboxConfig) -> Result<()> {
 
     if let Some(fd) = get_file_fd(&config.stderr, config.stderr_fd, false)? {
         redirect(fd, libc::STDERR_FILENO).context("failed to redirect stderr")?;
+    }
+
+    Ok(())
+}
+
+fn do_mount(config: &SandboxConfig) -> Result<()> {
+    // prevent propagation of mount events to other mount namespaces
+    // https://man7.org/linux/man-pages/man7/mount_namespaces.7.html
+    utils::libc_call(|| unsafe {
+        let flags = libc::MS_PRIVATE | libc::MS_REC;
+        let dst = b"/\0".as_ptr().cast();
+        let null = ptr::null();
+        libc::mount(null, dst, null, flags, null.cast())
+    })?;
+
+    let root = if let Some(ref chroot) = config.chroot {
+        chroot.absolutize()?
+    } else {
+        Cow::Borrowed("/".as_ref())
+    };
+
+    let get_real_dst = |dst: &Path| -> Result<OsString> {
+        let dst = dst.absolutize_virtually("/")?;
+        let mut real_dst: OsString = root.as_os_str().into();
+        real_dst.push(dst.as_os_str());
+        Ok(real_dst)
+    };
+
+    let rw_mnts: _ = config.bindmount_rw.iter().map(|m| (m, false));
+    let ro_mnts: _ = config.bindmount_ro.iter().map(|m| (m, true));
+
+    for (mnt, readonly) in rw_mnts.chain(ro_mnts) {
+        let real_dst = get_real_dst(&mnt.dst)?;
+        let src: &Path = &mnt.src;
+        let dst: &Path = real_dst.as_ref();
+        trace!(src = %src.display(), dst = %dst.display(), ?readonly, "do bind mount");
+        let on_err = || {
+            format!(
+                "failed to do bind mount: src = {}, dst = {}, readonly = {}",
+                src.display(),
+                dst.display(),
+                readonly
+            )
+        };
+        utils::bind_mount(src, dst, false, readonly).with_context(on_err)?;
     }
 
     Ok(())
@@ -325,11 +388,11 @@ fn cg_reset_metrics(cg: &Cgroup) -> Result<()> {
 fn set_id(config: &SandboxConfig) -> Result<()> {
     if let Some(gid) = config.gid.map(Gid::from_raw) {
         unistd::setgroups(&[gid]).context("failed to set groups")?;
-        unistd::setgid(gid).context("failed to set gid")?;
+        unistd::setresgid(gid, gid, gid).context("failed to set gid")?;
     }
 
     if let Some(uid) = config.uid.map(Uid::from_raw) {
-        unistd::setuid(uid).context("failed to set uid")?;
+        unistd::setresuid(uid, uid, uid).context("failed to set uid")?;
     }
 
     Ok(())

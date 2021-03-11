@@ -1,5 +1,6 @@
 use carapace::{SandboxConfig, SandboxOutput};
 
+use std::fs;
 use std::sync::Once;
 
 use anyhow::Result;
@@ -24,7 +25,9 @@ fn init() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
         dotenv::dotenv().ok();
-        setup_tracing()
+        setup_tracing();
+
+        fs::create_dir("/tmp/carapace_test").unwrap();
     });
 }
 
@@ -68,14 +71,14 @@ fn test_hack(
     name: &str,
     src: &str,
     bin: &str,
-    args: &SandboxConfig,
+    config: &SandboxConfig,
     check: impl FnOnce(SandboxOutput),
 ) -> Result<()> {
     init();
     info!("{} src = {}, bin = {}", name, src, bin);
     gcc_compile(src, bin)?;
     info!("{} run hack", name);
-    let output = run(&args)?;
+    let output = run(&config)?;
     assert_ne!(output.code, 101);
     check(output);
     info!("{} finished", name);
@@ -90,7 +93,7 @@ macro_rules! assets {
 
 macro_rules! tmp {
     ($file:literal) => {
-        concat!("/tmp/", $file)
+        concat!("/tmp/carapace_test/", $file)
     };
 }
 
@@ -117,7 +120,7 @@ async fn t01_empty() -> Result<()> {
         assert_eq!(output.code, 0);
         assert_eq!(output.signal, 0);
 
-        assert_le!(output.real_time, 50);
+        assert_le!(output.real_time, 100);
         assert_eq!(output.sys_time, 0);
         assert_le!(output.user_time, 1);
         assert_le!(output.memory, 400);
