@@ -43,7 +43,9 @@ pub fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
             let pipe_tx = ptr::read(&pipe_tx);
             let pipe_rx = ptr::read(&pipe_rx);
             drop(pipe_rx);
-            let result = run_child(&config, &cgroup);
+
+            let result = tracing::Span::none().in_scope(|| run_child(&config, &cgroup));
+
             let _ = pipe_tx.write_error(result.unwrap_err());
             101
         };
@@ -288,7 +290,6 @@ fn do_mount(config: &SandboxConfig) -> Result<()> {
         let real_dst = get_real_dst(&mnt.dst)?;
         let src: &Path = &mnt.src;
         let dst: &Path = real_dst.as_ref();
-        trace!(src = %src.display(), dst = %dst.display(), ?readonly, "do bind mount");
         let on_err = || {
             format!(
                 "failed to do bind mount: src = {}, dst = {}, readonly = {}",
