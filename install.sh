@@ -1,2 +1,2 @@
-cargo install --path . --offline
-cp ./target/release/carapace /usr/local/bin/
+cargo build --release
+sudo cp ./target/release/carapace /usr/local/bin/

@@ -1,4 +1,4 @@
-#![deny(clippy::all)]
+#![deny(clippy::all, clippy::cargo)]
 
 #[macro_use]
 mod utils;

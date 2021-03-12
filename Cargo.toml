@@ -3,6 +3,12 @@ name = "carapace"
 version = "0.1.0"
 authors = ["Nugine <Nugine@163.com>"]
 edition = "2018"
+readme = "README.md"
+license = "MIT"
+description = "A code runner for online judge"
+repository = "https://github.com/Nugine/carapace"
+keywords = ["sandbox"]
+categories =  ["command-line-utilities"]
 
 [dependencies]
 aligned-utils = "1.0.2"
