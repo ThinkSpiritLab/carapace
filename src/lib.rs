@@ -143,6 +143,13 @@ impl BindMount {
             dst: dst.into(),
         })
     }
+
+    pub fn new_same(src: PathBuf) -> Self {
+        Self {
+            dst: src.clone(),
+            src,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
