@@ -54,22 +54,24 @@ pub fn bind_mount(src_path: &Path, dst_path: &Path, recursive: bool, readonly: b
     Ok(())
 }
 
-pub fn mount_proc(dst: &Path) -> io::Result<()> {
+unsafe fn special_mount(dst: &Path, fstype: &[u8]) -> io::Result<()> {
+    if !dst.exists() {
+        fs::create_dir_all(dst)?;
+    }
     with_c_str(dst.as_os_str().as_bytes(), |dst| {
         let src = b"none\0".as_ptr().cast();
-        let fstype = b"proc\0".as_ptr().cast();
-        libc_call(|| unsafe { libc::mount(src, dst.as_ptr(), fstype, 0, ptr::null()) })?;
+        let fstype = fstype.as_ptr().cast();
+        libc_call(|| libc::mount(src, dst.as_ptr(), fstype, 0, ptr::null()))?;
         Ok(())
     })
 }
 
+pub fn mount_proc(dst: &Path) -> io::Result<()> {
+    unsafe { special_mount(dst, b"proc\0".as_ref()) }
+}
+
 pub fn mount_tmpfs(dst: &Path) -> io::Result<()> {
-    with_c_str(dst.as_os_str().as_bytes(), |dst| {
-        let src = b"none\0".as_ptr().cast();
-        let fstype = b"tmpfs\0".as_ptr().cast();
-        libc_call(|| unsafe { libc::mount(src, dst.as_ptr(), fstype, 0, ptr::null()) })?;
-        Ok(())
-    })
+    unsafe { special_mount(dst, b"tmpfs\0".as_ref()) }
 }
 
 /// prevent propagation of mount events to other mount namespaces
