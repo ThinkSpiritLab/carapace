@@ -19,7 +19,7 @@ cargo install --path .
 Install to `/usr/local/bin/carapace`
 
 ```sh
-sudo ./install.sh
+./install.sh
 ```
 
 ## Usage
