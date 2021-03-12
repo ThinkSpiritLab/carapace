@@ -163,3 +163,9 @@ pub struct SandboxOutput {
 
     pub memory: u64, // KiB
 }
+
+impl SandboxOutput {
+    pub fn is_success(&self) -> bool {
+        self.code == 0 && self.signal == 0
+    }
+}
