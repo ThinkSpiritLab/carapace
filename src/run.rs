@@ -1,7 +1,9 @@
 use crate::cgroup_v1::Cgroup;
+use crate::mount::{bind_mount, make_root_private, mount_proc, mount_tmpfs};
 use crate::pipe::{self, PipeRx};
+use crate::proc::{clone_proc, wait_child};
 use crate::signal;
-use crate::utils::{self, RawFd};
+use crate::utils::RawFd;
 use crate::{SandboxConfig, SandboxOutput};
 
 use std::borrow::Cow;
@@ -24,6 +26,8 @@ use scopeguard::guard;
 use tracing::{trace, warn};
 
 pub fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
+    trace!("config:\n{:#?}", config);
+
     validate(&config)?;
 
     let cgroup = {
@@ -54,7 +58,7 @@ pub fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
 
         let t0 = Instant::now();
 
-        let child_pid = unsafe { utils::clone_proc(clone_cb, &mut *stack, flags, libc::SIGCHLD) }
+        let child_pid = unsafe { clone_proc(clone_cb, &mut *stack, flags, libc::SIGCHLD) }
             .context("failed to fork")?;
 
         (t0, child_pid)
@@ -67,7 +71,20 @@ pub fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
 fn validate(config: &SandboxConfig) -> Result<()> {
     for mnt in config.bindmount_rw.iter().chain(config.bindmount_ro.iter()) {
         if !mnt.src.is_absolute() || !mnt.dst.is_absolute() {
-            anyhow::bail!("bind mount path must be absolute")
+            anyhow::bail!(
+                "bind mount path must be absolute: src = {}, dst = {}",
+                mnt.src.display(),
+                mnt.dst.display()
+            )
+        }
+    }
+
+    for mnt in config.mount_proc.iter().chain(&config.mount_tmpfs) {
+        if !mnt.is_absolute() {
+            anyhow::bail!(
+                "special mount path must be absolute: path = {}",
+                mnt.display()
+            )
         }
     }
 
@@ -97,7 +114,7 @@ fn run_parent(
     child_result.context("child process failed")?;
 
     let wait_t0 = Instant::now();
-    let (code, signal) = utils::wait_child(child_pid).context("failed to wait4")?;
+    let (code, signal) = wait_child(child_pid).context("failed to wait4")?;
     let wait_duration = wait_t0.elapsed();
     let real_duration = t0.elapsed();
     drop(killer);
@@ -249,14 +266,7 @@ fn redirect_stdio(config: &SandboxConfig) -> Result<()> {
 }
 
 fn do_mount(config: &SandboxConfig) -> Result<()> {
-    // prevent propagation of mount events to other mount namespaces
-    // https://man7.org/linux/man-pages/man7/mount_namespaces.7.html
-    utils::libc_call(|| unsafe {
-        let flags = libc::MS_PRIVATE | libc::MS_REC;
-        let dst = b"/\0".as_ptr().cast();
-        let null = ptr::null();
-        libc::mount(null, dst, null, flags, null.cast())
-    })?;
+    make_root_private()?;
 
     let root = if let Some(ref chroot) = config.chroot {
         chroot.absolutize()?
@@ -287,7 +297,21 @@ fn do_mount(config: &SandboxConfig) -> Result<()> {
                 readonly
             )
         };
-        utils::bind_mount(src, dst, false, readonly).with_context(on_err)?;
+        bind_mount(src, dst, false, readonly).with_context(on_err)?;
+    }
+
+    if let Some(ref mnt) = config.mount_proc {
+        let real_dst = get_real_dst(mnt)?;
+        let dst: &Path = real_dst.as_ref();
+        mount_proc(dst)
+            .with_context(|| format!("failed to mount proc: dst = {}", dst.display()))?;
+    }
+
+    if let Some(ref mnt) = config.mount_tmpfs {
+        let real_dst = get_real_dst(mnt)?;
+        let dst: &Path = real_dst.as_ref();
+        mount_tmpfs(dst)
+            .with_context(|| format!("failed to mount tmpfs: dst = {}", dst.display()))?;
     }
 
     Ok(())

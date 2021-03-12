@@ -4,7 +4,9 @@
 mod utils;
 
 mod cgroup_v1;
+mod mount;
 mod pipe;
+mod proc;
 mod run;
 mod signal;
 
@@ -17,74 +19,100 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 
 use anyhow::Result;
+use clap::Clap;
 use memchr::memchr;
 use serde::{Deserialize, Serialize};
-use structopt::clap;
-use structopt::StructOpt;
 
-#[derive(Debug, Default, Serialize, Deserialize, StructOpt)]
-#[structopt(setting = clap::AppSettings::DeriveDisplayOrder)]
+#[derive(Debug, Default, Serialize, Deserialize, Clap)]
+#[clap(setting(clap::AppSettings::DeriveDisplayOrder))]
 pub struct SandboxConfig {
     pub bin: PathBuf, // relative to chroot
 
     pub args: Vec<OsString>,
 
-    #[structopt(short = "e", long)]
+    #[clap(short = 'e', long)]
     pub env: Vec<OsString>,
 
-    #[structopt(short = "c", long, value_name = "path")]
+    #[clap(short = 'c', long, value_name = "path")]
     pub chroot: Option<PathBuf>, // relative to cwd
 
-    #[structopt(long)]
+    #[clap(long)]
     pub uid: Option<u32>,
 
-    #[structopt(long)]
+    #[clap(long)]
     pub gid: Option<u32>,
 
-    #[structopt(long, value_name = "path")]
+    #[clap(long, value_name = "path")]
     pub stdin: Option<PathBuf>, // relative to cwd
 
-    #[structopt(long, value_name = "path")]
+    #[clap(long, value_name = "path")]
     pub stdout: Option<PathBuf>, // relative to cwd
 
-    #[structopt(long, value_name = "path")]
+    #[clap(long, value_name = "path")]
     pub stderr: Option<PathBuf>, // relative to cwd
 
-    #[structopt(long, value_name = "fd", conflicts_with = "stdin")]
+    #[clap(long, value_name = "fd", conflicts_with = "stdin")]
     pub stdin_fd: Option<RawFd>,
 
-    #[structopt(long, value_name = "fd", conflicts_with = "stdout")]
+    #[clap(long, value_name = "fd", conflicts_with = "stdout")]
     pub stdout_fd: Option<RawFd>,
 
-    #[structopt(long, value_name = "fd", conflicts_with = "stderr")]
+    #[clap(long, value_name = "fd", conflicts_with = "stderr")]
     pub stderr_fd: Option<RawFd>,
 
-    #[structopt(short = "t", long, value_name = "milliseconds")]
+    #[clap(short = 't', long, value_name = "milliseconds")]
     pub real_time_limit: Option<u64>,
 
-    #[structopt(long, value_name = "seconds")]
+    #[clap(long, value_name = "seconds")]
     pub rlimit_cpu: Option<u32>,
 
-    #[structopt(long, value_name = "bytes")]
+    #[clap(long, value_name = "bytes")]
     pub rlimit_as: Option<u64>,
 
-    #[structopt(long, value_name = "bytes")]
+    #[clap(long, value_name = "bytes")]
     pub rlimit_data: Option<u64>,
 
-    #[structopt(long, value_name = "bytes")]
+    #[clap(long, value_name = "bytes")]
     pub rlimit_fsize: Option<u64>,
 
-    #[structopt(long, value_name = "bytes")]
+    #[clap(long, value_name = "bytes")]
     pub cg_limit_memory: Option<u64>,
 
-    #[structopt(long, value_name = "count")]
+    #[clap(long, value_name = "count")]
     pub cg_limit_max_pids: Option<u32>,
 
-    #[structopt(long, value_name = "bindmount", parse(try_from_os_str = BindMount::try_from_os_str))]
+    #[clap(
+        long,
+        value_name = "bindmount",
+        parse(try_from_os_str = BindMount::try_from_os_str)
+    )]
     pub bindmount_rw: Vec<BindMount>,
 
-    #[structopt(long, value_name = "bindmount", parse(try_from_os_str = BindMount::try_from_os_str))]
+    #[clap(
+        short = 'b',
+        long,
+        value_name = "bindmount",
+        parse(try_from_os_str = BindMount::try_from_os_str)
+    )]
     pub bindmount_ro: Vec<BindMount>,
+
+    #[clap(
+        long,
+        value_name = "path",
+        min_values = 0,
+        require_equals = true,
+        default_missing_value = "/proc"
+    )]
+    pub mount_proc: Option<PathBuf>, // absolute (affected by chroot)
+
+    #[clap(
+        long,
+        value_name = "path",
+        min_values = 0,
+        require_equals = true,
+        default_missing_value = "/tmp"
+    )]
+    pub mount_tmpfs: Option<PathBuf>, // absolute (affected by chroot)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -94,7 +122,7 @@ pub struct BindMount {
 }
 
 impl BindMount {
-    fn try_from_os_str(s: &OsStr) -> Result<Self, OsString> {
+    fn try_from_os_str(s: &OsStr) -> Result<Self, String> {
         let (src, dst) = match memchr(b':', s.as_bytes()) {
             Some(idx) => {
                 let src = OsStr::from_bytes(&s.as_bytes()[..idx]);
