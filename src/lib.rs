@@ -24,7 +24,11 @@ use memchr::memchr;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Serialize, Deserialize, Clap)]
-#[clap(setting(clap::AppSettings::DeriveDisplayOrder))]
+#[clap(
+    version = clap::crate_version!(),
+    author = clap::crate_authors!(),
+    setting(clap::AppSettings::DeriveDisplayOrder),
+)]
 pub struct SandboxConfig {
     pub bin: PathBuf, // relative to chroot
 
