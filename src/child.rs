@@ -252,14 +252,63 @@ fn cg_prepare_reset_metrics(cg: &Cgroup) -> Result<impl FnOnce() -> Result<()>> 
 }
 
 fn set_id(config: &SandboxConfig) -> Result<()> {
+    // NOTE:
+    // I accidentally ran into a deadlock problem here.
+    // It seems that the deadlock occurs in `__nptl_setxid` (found by `strace -k`)
+    // So I use direct syscalls to work around.
+    //
+    // Env:  rustc 1.50.0, glibc 2.27
+    // Time: 2021-03-13
+
     if let Some(gid) = config.gid.map(Gid::from_raw) {
-        unistd::setgroups(&[gid]).context("failed to set groups")?;
-        unistd::setresgid(gid, gid, gid).context("failed to set gid")?;
+        setgroups(&[gid]).context("failed to set groups")?;
+        setresgid(gid, gid, gid).context("failed to set gid")?;
     }
 
     if let Some(uid) = config.uid.map(Uid::from_raw) {
-        unistd::setresuid(uid, uid, uid).context("failed to set uid")?;
+        setresuid(uid, uid, uid).context("failed to set uid")?;
     }
 
     Ok(())
+}
+
+fn setgroups(groups: &[Gid]) -> io::Result<()> {
+    unsafe {
+        let size: libc::c_long = groups.len() as _;
+        let ptr: libc::c_long = groups.as_ptr() as _;
+
+        let ret = libc::syscall(libc::SYS_setgroups, size, ptr);
+        if ret < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+}
+
+fn setresgid(rgid: Gid, egid: Gid, sgid: Gid) -> io::Result<()> {
+    unsafe {
+        let rgid: libc::c_long = rgid.as_raw() as _;
+        let egid: libc::c_long = egid.as_raw() as _;
+        let sgid: libc::c_long = sgid.as_raw() as _;
+
+        let ret = libc::syscall(libc::SYS_setresgid, rgid, egid, sgid);
+        if ret < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+}
+
+fn setresuid(ruid: Uid, euid: Uid, suid: Uid) -> io::Result<()> {
+    unsafe {
+        let ruid: libc::c_long = ruid.as_raw() as _;
+        let euid: libc::c_long = euid.as_raw() as _;
+        let suid: libc::c_long = suid.as_raw() as _;
+
+        let ret = libc::syscall(libc::SYS_setresuid, ruid, euid, suid);
+        if ret < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
 }
