@@ -34,7 +34,6 @@ fn init() {
 }
 
 fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
-    debug!("sandbox config = {:?}", config);
     match carapace::run(&config) {
         Ok(output) => {
             debug!("sandbox output = {:?}", output);

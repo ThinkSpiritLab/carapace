@@ -15,14 +15,16 @@ use nix::unistd::Pid;
 use scopeguard::guard;
 use tracing::{trace, warn};
 
+#[tracing::instrument(level = "trace", err, skip(config), fields(nonce))]
 pub fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
+    let nonce: u32 = rand::random();
+    tracing::Span::current().record("nonce", &nonce);
+
+    trace!(?config);
+
     validate(&config)?;
 
-    let cgroup = {
-        let nonce: u32 = rand::random();
-        let cg_name = format!("carapace_{}", nonce);
-        Cgroup::create(&cg_name)?
-    };
+    let cgroup = Cgroup::create(&format!("carapace_{}", nonce))?;
 
     let (pipe_tx, pipe_rx) = pipe::create().context("failed to create pipe")?;
 
@@ -102,6 +104,8 @@ fn run_parent(
     } else {
         None
     };
+
+    trace!("start to receive child result");
 
     let child_result = pipe_rx
         .read_result()

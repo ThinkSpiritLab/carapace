@@ -17,27 +17,22 @@ use nix::sys::stat::Mode;
 use nix::unistd::{self, AccessFlags, Gid, Uid};
 use path_absolutize::Absolutize;
 use rlimit::{Resource, Rlim};
-use tracing::trace;
 
 pub fn run_child(config: &SandboxConfig, cgroup: &Cgroup) -> Result<Infallible> {
-    trace!("do mount");
     do_mount(&config)?;
 
     let exec = prepare_execve_args(config)?;
 
-    trace!("cgroup setup child");
     cg_setup_child(config, cgroup).context("failed to setup cgroup")?;
 
     let reset: _ = cg_prepare_reset_metrics(cgroup).context("failed to prepare cgroup metrics")?;
 
-    trace!("do chroot");
     if let Some(ref new_root) = config.chroot {
         unistd::chroot(new_root)
             .and_then(|_| unistd::chdir("/"))
             .context("failed to chroot")?;
     }
 
-    trace!("set hard rlimit");
     set_hard_rlimit(config)?;
 
     if let Some(prio) = config.priority {
@@ -45,7 +40,6 @@ pub fn run_child(config: &SandboxConfig, cgroup: &Cgroup) -> Result<Infallible> 
             .context("failed to set priority")?;
     }
 
-    trace!("redirect stdio");
     redirect_stdio(config)?;
 
     unistd::access(&config.bin, AccessFlags::F_OK)
