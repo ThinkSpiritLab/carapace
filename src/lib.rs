@@ -118,6 +118,9 @@ pub struct SandboxConfig {
         default_missing_value = "/tmp"
     )]
     pub mount_tmpfs: Option<PathBuf>, // absolute (affected by chroot)
+
+    #[clap(long, value_name = "prio")]
+    pub priority: Option<i8>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -228,6 +231,8 @@ impl SandboxConfig {
 
         push!(@os_str @opt_arg "--mount-proc", mount_proc);
         push!(@os_str @opt_arg "--mount-tmpfs", mount_tmpfs);
+
+        push!(@num "--priority", priority);
 
         push!(@num "--stdin-fd", stdin_fd);
         push!(@num "--stdout-fd", stdout_fd);

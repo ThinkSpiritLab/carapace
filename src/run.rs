@@ -3,7 +3,7 @@ use crate::mount::{bind_mount, make_root_private, mount_proc, mount_tmpfs};
 use crate::pipe::{self, PipeRx};
 use crate::proc::{clone_proc, wait_child};
 use crate::signal;
-use crate::utils::RawFd;
+use crate::utils::{self, RawFd};
 use crate::{SandboxConfig, SandboxOutput};
 
 use std::borrow::Cow;
@@ -70,6 +70,12 @@ pub fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
 }
 
 fn validate(config: &SandboxConfig) -> Result<()> {
+    if let Some(prio) = config.priority {
+        if !(-20..20).contains(&prio) {
+            anyhow::bail!("priority must be in the range -20 to 19: prio = {}", prio);
+        }
+    }
+
     for mnt in config.bindmount_rw.iter().chain(config.bindmount_ro.iter()) {
         if !mnt.src.is_absolute() || !mnt.dst.is_absolute() {
             anyhow::bail!(
@@ -208,6 +214,11 @@ fn run_child(config: &SandboxConfig, cgroup: &Cgroup) -> Result<Infallible> {
     }
 
     set_hard_rlimit(config)?;
+
+    if let Some(prio) = config.priority {
+        utils::libc_call(|| unsafe { libc::setpriority(libc::PRIO_PROCESS, 0, prio as _) })
+            .context("failed to set priority")?;
+    }
 
     redirect_stdio(config)?;
 
