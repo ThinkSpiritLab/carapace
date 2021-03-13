@@ -9,10 +9,11 @@ use crate::{SandboxConfig, SandboxOutput};
 use std::borrow::Cow;
 use std::convert::Infallible;
 use std::ffi::{CString, OsString};
+use std::io::Write;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-use std::{env, io, ptr};
+use std::{env, fs, io, ptr};
 
 use aligned_utils::bytes::AlignedBytes;
 use anyhow::{Context, Result};
@@ -192,25 +193,27 @@ fn cg_cleanup(cg: Cgroup) -> Result<()> {
 }
 
 fn run_child(config: &SandboxConfig, cgroup: &Cgroup) -> Result<Infallible> {
-    redirect_stdio(config)?;
-
     do_mount(&config)?;
 
     let exec = prepare_execve_args(config)?;
 
     cg_setup_child(config, cgroup).context("failed to setup cgroup")?;
 
-    set_hard_rlimit(config)?;
-
-    cg_reset_metrics(cgroup).context("failed to reset cgroup metrics")?;
+    let reset: _ = cg_prepare_reset_metrics(cgroup).context("failed to prepare cgroup metrics")?;
 
     if let Some(ref new_root) = config.chroot {
         unistd::chroot(new_root).context("failed to chroot")?;
         unistd::chdir("/")?;
     }
 
+    set_hard_rlimit(config)?;
+
+    redirect_stdio(config)?;
+
     unistd::access(&config.bin, AccessFlags::F_OK)
         .with_context(|| format!("failed to access file: path = {}", config.bin.display()))?;
+
+    reset().context("failed to reset cgroup metrics")?;
 
     set_id(config)?;
 
@@ -298,7 +301,7 @@ fn do_mount(config: &SandboxConfig) -> Result<()> {
                 readonly
             )
         };
-        bind_mount(src, dst, false, readonly).with_context(on_err)?;
+        bind_mount(src, dst, true, readonly).with_context(on_err)?;
     }
 
     if let Some(ref mnt) = config.mount_proc {
@@ -404,10 +407,15 @@ fn cg_setup_child(config: &SandboxConfig, cg: &Cgroup) -> Result<()> {
     Ok(())
 }
 
-fn cg_reset_metrics(cg: &Cgroup) -> Result<()> {
-    Cgroup::write_type(cg.cpu(), "cpuacct.usage", 0)?;
-    Cgroup::write_type(cg.memory(), "memory.max_usage_in_bytes", 0)?;
-    Ok(())
+fn cg_prepare_reset_metrics(cg: &Cgroup) -> Result<impl FnOnce() -> Result<()>> {
+    let mut cpu = fs::File::create(&format!("{}/cpuacct.usage", cg.cpu()))?;
+    let mut mem = fs::File::create(&format!("{}/memory.max_usage_in_bytes", cg.memory()))?;
+
+    Ok(move || {
+        write!(cpu, "0")?;
+        write!(mem, "0")?;
+        Ok(())
+    })
 }
 
 fn set_id(config: &SandboxConfig) -> Result<()> {

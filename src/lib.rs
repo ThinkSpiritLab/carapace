@@ -47,13 +47,13 @@ pub struct SandboxConfig {
     pub gid: Option<u32>,
 
     #[clap(long, value_name = "path")]
-    pub stdin: Option<PathBuf>, // relative to cwd
+    pub stdin: Option<PathBuf>, // relative to chroot
 
     #[clap(long, value_name = "path")]
-    pub stdout: Option<PathBuf>, // relative to cwd
+    pub stdout: Option<PathBuf>, // relative to chroot
 
     #[clap(long, value_name = "path")]
-    pub stderr: Option<PathBuf>, // relative to cwd
+    pub stderr: Option<PathBuf>, // relative to chroot
 
     #[clap(long, value_name = "fd", conflicts_with = "stdin")]
     pub stdin_fd: Option<RawFd>,
