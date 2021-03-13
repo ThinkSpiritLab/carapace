@@ -25,7 +25,8 @@ Install to `/usr/local/bin/carapace`
 ## Usage
 
 ```
-carapace 
+carapace 0.2.0-dev
+Nugine <Nugine@163.com>
 
 USAGE:
     carapace [OPTIONS] <bin> [--] [args]...
@@ -59,5 +60,8 @@ OPTIONS:
         --bindmount-rw <bindmount>...       
     -b, --bindmount-ro <bindmount>...       
         --mount-proc=<path>                 
-        --mount-tmpfs=<path>    
+        --mount-tmpfs=<path>                
+        --priority <prio>                   
+        --report <path>                     
+        --report-fd <fd>  
 ```
