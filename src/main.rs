@@ -1,8 +1,12 @@
+use std::fs;
 use std::io::{self, Write};
+use std::os::unix::io::RawFd;
+use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use carapace::{SandboxConfig, SandboxOutput};
 use clap::Clap;
+use nix::unistd;
 use tokio::runtime;
 
 fn setup_tracing() {
@@ -20,11 +24,23 @@ fn setup_tracing() {
         .init();
 }
 
+#[derive(Debug, Clap)]
+struct Opt {
+    #[clap(flatten)]
+    config: SandboxConfig,
+
+    #[clap(long, value_name = "path")]
+    report: Option<PathBuf>,
+
+    #[clap(long, value_name = "fd", conflicts_with = "report")]
+    report_fd: Option<RawFd>,
+}
+
 fn main() -> Result<()> {
     dotenv::dotenv().ok();
     setup_tracing();
 
-    let config = SandboxConfig::parse();
+    let opt = Opt::parse();
 
     let runtime = runtime::Builder::new_multi_thread()
         .worker_threads(2)
@@ -34,16 +50,34 @@ fn main() -> Result<()> {
 
     let output: SandboxOutput = {
         let _enter = runtime.enter();
-        carapace::run(&config)?
+        carapace::run(&opt.config)?
     };
 
-    {
-        let stdout = io::stdout();
-        let mut stdout_lock = stdout.lock();
-        let out = &mut stdout_lock;
-        serde_json::to_writer(&mut *out, &output)?;
-        writeln!(out)?;
-    }
+    match (opt.report, opt.report_fd) {
+        (Some(path), _) => {
+            let mut report_file = fs::File::create(&path).with_context(|| {
+                format!("failed to create report file: path = {}", path.display())
+            })?;
+            let out = &mut report_file;
+            serde_json::to_writer(&mut *out, &output)?;
+            writeln!(out)?;
+            report_file.flush()?;
+        }
+        (None, Some(fd)) => {
+            let mut buf = serde_json::to_string(&output)?;
+            buf.push('\n');
+            unistd::write(fd, buf.as_bytes())
+                .with_context(|| format!("failed to write report: fd = {}", fd))?;
+        }
+        (None, None) => {
+            let stdout = io::stdout();
+            let mut stdout_lock = stdout.lock();
+            let out = &mut stdout_lock;
+            serde_json::to_writer(&mut *out, &output)?;
+            writeln!(out)?;
+            out.flush()?;
+        }
+    };
 
     Ok(())
 }
