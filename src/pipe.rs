@@ -21,10 +21,17 @@ impl Drop for PipeRx {
 }
 
 pub fn create() -> io::Result<(PipeTx, PipeRx)> {
-    let mut fds = [0, 0];
-    libc_call(|| unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) })?;
-    let rx = PipeRx(fds[0]);
-    let tx = PipeTx(fds[1]);
+    let mut sv = [0, 0];
+    libc_call(|| unsafe {
+        libc::socketpair(
+            libc::AF_UNIX,
+            libc::SOCK_STREAM | libc::SOCK_CLOEXEC,
+            0,
+            sv.as_mut_ptr(),
+        )
+    })?;
+    let rx = PipeRx(sv[0]);
+    let tx = PipeTx(sv[1]);
     Ok((tx, rx))
 }
 
@@ -34,9 +41,10 @@ impl PipeTx {
         write!(buf, "{:?}", err).unwrap();
         unsafe {
             let mut file = fs::File::from_raw_fd(self.0);
-            let ret = file.write_all(&buf);
+            let ret1 = file.write_all(&buf);
+            let ret2 = file.flush();
             mem::forget(file);
-            ret?;
+            ret1.and(ret2)?;
         }
         Ok(())
     }

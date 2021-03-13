@@ -27,7 +27,9 @@ fn init() {
         dotenv::dotenv().ok();
         setup_tracing();
 
-        fs::create_dir("/tmp/carapace_test").unwrap();
+        let workspace = "/tmp/carapace_test";
+        let _ = fs::remove_dir_all(workspace);
+        fs::create_dir(workspace).unwrap();
     });
 }
 
