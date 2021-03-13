@@ -4,6 +4,7 @@
 mod utils;
 
 mod cgroup_v1;
+mod child;
 mod mount;
 mod pipe;
 mod proc;
