@@ -112,6 +112,9 @@ fn run_parent(
         .read_result()
         .context("failed to read child result")?;
 
+    let child_result_duration = t0.elapsed();
+    trace!(?child_result_duration);
+
     child_result.context("child process failed")?;
 
     let wait_t0 = Instant::now();
