@@ -7,7 +7,7 @@ use crate::utils::RawFd;
 use crate::{SandboxConfig, SandboxOutput};
 
 use std::borrow::Cow;
-use std::convert::Infallible;
+use std::convert::{Infallible, TryInto};
 use std::ffi::{CString, OsString};
 use std::io::Write;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
@@ -27,8 +27,6 @@ use scopeguard::guard;
 use tracing::{trace, warn};
 
 pub fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
-    trace!("config:\n{:#?}", config);
-
     validate(&config)?;
 
     let cgroup = {
@@ -324,8 +322,9 @@ fn do_mount(config: &SandboxConfig) -> Result<()> {
 fn set_hard_rlimit(config: &SandboxConfig) -> Result<()> {
     macro_rules! direct_set {
         ($res:expr, $field:ident) => {
-            if let Some($field) = config.$field.map(|r| Rlim::from_raw(r as _)) {
-                Resource::AS.set($field, $field)?;
+            if let Some($field) = config.$field {
+                let $field = Rlim::from_raw($field.try_into()?);
+                $res.set($field, $field)?;
             }
         };
     }

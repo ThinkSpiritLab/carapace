@@ -17,6 +17,7 @@ use crate::utils::RawFd;
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
+use std::process::Command;
 
 use anyhow::Result;
 use clap::Clap;
@@ -167,5 +168,85 @@ pub struct SandboxOutput {
 impl SandboxOutput {
     pub fn is_success(&self) -> bool {
         self.code == 0 && self.signal == 0
+    }
+}
+
+impl SandboxConfig {
+    pub fn to_cmd(&self) -> Command {
+        let mut cmd = Command::new("carapace");
+
+        macro_rules! push {
+            (@os_str $opt: literal, $f: ident) => {
+                if let Some(ref $f) = self.$f {
+                    cmd.arg($opt).arg($f);
+                }
+            };
+            (@num $opt: literal, $f: ident) => {
+                if let Some(ref $f) = self.$f {
+                    cmd.arg($opt).arg($f.to_string());
+                }
+            };
+            (@bindmount $opt: literal, $f: ident) => {
+                for mnt in &self.$f {
+                    cmd.arg($opt);
+                    let mut s: OsString = mnt.src.as_os_str().into();
+                    if mnt.src != mnt.dst {
+                        s.push(":");
+                        s.push(&mnt.dst);
+                    }
+                    cmd.arg(s);
+                }
+            };
+            (@os_str @opt_arg $opt: literal, $f: ident) => {
+                if let Some(ref $f) = self.$f {
+                    let mut s: OsString = $opt.into();
+                    s.push("=");
+                    s.push($f);
+                    cmd.arg(s);
+                }
+            };
+            (@os_str @multi $opt: literal, $f: ident) => {
+                for $f in &self.$f {
+                    cmd.arg($opt).arg($f);
+                }
+            };
+        }
+
+        push!(@num "--uid", uid);
+        push!(@num "--gid", gid);
+
+        push!(@num "--rlimit-cpu", rlimit_cpu);
+        push!(@num "--rlimit-as", rlimit_as);
+        push!(@num "--rlimit-data", rlimit_data);
+        push!(@num "--rlimit-fsize", rlimit_fsize);
+
+        push!(@num "--cg-limit-memory", cg_limit_memory);
+        push!(@num "--cg-limit-max-pids", cg_limit_max_pids);
+
+        push!(@bindmount "--bindmount-rw", bindmount_rw);
+        push!(@bindmount "-b", bindmount_ro);
+
+        push!(@os_str @opt_arg "--mount-proc", mount_proc);
+        push!(@os_str @opt_arg "--mount-tmpfs", mount_tmpfs);
+
+        push!(@num "--stdin-fd", stdin_fd);
+        push!(@num "--stdout-fd", stdout_fd);
+        push!(@num "--stderr-fd", stderr_fd);
+
+        push!(@num "-t", real_time_limit);
+
+        push!(@os_str "-c", chroot);
+
+        push!(@os_str @multi "-e", env);
+
+        push!(@os_str "--stdin", stdin);
+        push!(@os_str "--stdout", stdout);
+        push!(@os_str "--stderr", stderr);
+
+        cmd.arg("--");
+        cmd.arg(&self.bin);
+        cmd.args(&self.args);
+
+        cmd
     }
 }
