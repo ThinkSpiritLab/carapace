@@ -57,6 +57,7 @@ dependencies = [
  "aligned-utils",
  "anyhow",
  "clap",
+ "crossbeam-utils",
  "dotenv",
  "libc",
  "memchr",
@@ -128,6 +129,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "crossbeam-utils"
+version = "0.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7e9d99fa91428effe99c5c6d4634cdeba32b8cf784fc428a2a687f61a952c49"
+dependencies = [
+ "autocfg",
+ "cfg-if",
+ "lazy_static",
 ]
 
 [[package]]

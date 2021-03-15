@@ -13,7 +13,6 @@ mod run;
 mod signal;
 
 pub use crate::cmd::Command;
-pub use crate::run::run;
 
 use crate::utils::RawFd;
 
@@ -24,8 +23,22 @@ use std::process;
 
 use anyhow::Result;
 use clap::Clap;
+use crossbeam_utils::thread;
 use memchr::memchr;
 use serde::{Deserialize, Serialize};
+
+pub fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
+    let handle = tokio::runtime::Handle::current();
+    let run_in_tokio = move |config| {
+        let _enter = handle.enter();
+        crate::run::run(config)
+    };
+    thread::scope(|s| s.spawn(|_| run_in_tokio(config)).join().unwrap()).unwrap()
+}
+
+pub fn run_standalone(config: &SandboxConfig) -> Result<SandboxOutput> {
+    crate::run::run(config)
+}
 
 #[derive(Debug, Default, Serialize, Deserialize, Clap)]
 #[clap(

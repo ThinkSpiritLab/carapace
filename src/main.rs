@@ -50,7 +50,7 @@ fn main() -> Result<()> {
 
     let output: SandboxOutput = {
         let _enter = runtime.enter();
-        carapace::run(&opt.config)?
+        carapace::run_standalone(&opt.config)?
     };
 
     match (opt.report, opt.report_fd) {

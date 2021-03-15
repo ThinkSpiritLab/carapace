@@ -10,7 +10,7 @@ use std::time::Instant;
 
 use aligned_utils::bytes::AlignedBytes;
 use anyhow::{Context, Result};
-use nix::sched::CloneFlags;
+use nix::sched::{self, CloneFlags};
 use nix::unistd::Pid;
 use scopeguard::guard;
 use tracing::{trace, warn};
@@ -44,9 +44,19 @@ pub fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
 
         let flags: CloneFlags = CloneFlags::CLONE_NEWNS
             | CloneFlags::CLONE_NEWUTS
-            | CloneFlags::CLONE_NEWIPC
             | CloneFlags::CLONE_NEWPID
             | CloneFlags::CLONE_NEWNET;
+
+        // NOTE:
+        // When the last process in an IPC namespace exits,
+        // all IPC objects in the namespace are automatically destroyed.
+        // But it can cause an overhead (about 30ms) of shutting down the last process,
+        // which increase the `real_time` number in sandbox output.
+        // Is it a kernel bug?
+        //
+        // REF: https://man7.org/linux/man-pages/man7/ipc_namespaces.7.html
+
+        sched::unshare(CloneFlags::CLONE_NEWIPC)?;
 
         let t0 = Instant::now();
 
