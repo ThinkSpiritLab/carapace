@@ -5,12 +5,14 @@ mod utils;
 
 mod cgroup_v1;
 mod child;
+mod cmd;
 mod mount;
 mod pipe;
 mod proc;
 mod run;
 mod signal;
 
+pub use crate::cmd::Command;
 pub use crate::run::run;
 
 use crate::utils::RawFd;
@@ -18,7 +20,7 @@ use crate::utils::RawFd;
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process;
 
 use anyhow::Result;
 use clap::Clap;
@@ -176,8 +178,8 @@ impl SandboxOutput {
 }
 
 impl SandboxConfig {
-    pub fn to_cmd(&self) -> Command {
-        let mut cmd = Command::new("carapace");
+    pub fn to_cli_cmd(&self) -> process::Command {
+        let mut cmd = process::Command::new("carapace");
 
         macro_rules! push {
             (@os_str $opt: literal, $f: ident) => {
