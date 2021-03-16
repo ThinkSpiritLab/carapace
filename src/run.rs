@@ -10,7 +10,7 @@ use std::time::Instant;
 
 use aligned_utils::bytes::AlignedBytes;
 use anyhow::{Context, Result};
-use nix::sched::{self, CloneFlags};
+use nix::sched::CloneFlags;
 use nix::unistd::Pid;
 use scopeguard::guard;
 use tracing::{trace, warn};
@@ -55,8 +55,6 @@ pub fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
         // Is it a kernel bug?
         //
         // REF: https://man7.org/linux/man-pages/man7/ipc_namespaces.7.html
-
-        sched::unshare(CloneFlags::CLONE_NEWIPC)?;
 
         let t0 = Instant::now();
 

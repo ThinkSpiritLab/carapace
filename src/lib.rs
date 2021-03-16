@@ -10,6 +10,7 @@ mod mount;
 mod pipe;
 mod proc;
 mod run;
+mod seccomp;
 mod signal;
 
 pub use crate::cmd::Command;
@@ -23,20 +24,10 @@ use std::process;
 
 use anyhow::Result;
 use clap::Clap;
-use crossbeam_utils::thread;
 use memchr::memchr;
 use serde::{Deserialize, Serialize};
 
 pub fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
-    let handle = tokio::runtime::Handle::current();
-    let run_in_tokio = move |config| {
-        let _enter = handle.enter();
-        crate::run::run(config)
-    };
-    thread::scope(|s| s.spawn(|_| run_in_tokio(config)).join().unwrap()).unwrap()
-}
-
-pub fn run_standalone(config: &SandboxConfig) -> Result<SandboxOutput> {
     crate::run::run(config)
 }
 
@@ -137,6 +128,9 @@ pub struct SandboxConfig {
 
     #[clap(long, value_name = "prio")]
     pub priority: Option<i8>,
+
+    #[clap(long)]
+    pub seccomp_forbid_ipc: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -229,6 +223,11 @@ impl SandboxConfig {
                     cmd.arg($opt).arg($f);
                 }
             };
+            (@flag $opt: literal, $f: ident) => {
+                if self.$f {
+                    cmd.arg($opt);
+                }
+            };
         }
 
         push!(@num "--uid", uid);
@@ -249,6 +248,8 @@ impl SandboxConfig {
         push!(@os_str @opt_arg "--mount-tmpfs", mount_tmpfs);
 
         push!(@num "--priority", priority);
+
+        push!(@flag "--seccomp-forbid-ipc", seccomp_forbid_ipc);
 
         push!(@num "--stdin-fd", stdin_fd);
         push!(@num "--stdout-fd", stdout_fd);

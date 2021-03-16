@@ -43,14 +43,14 @@ fn main() -> Result<()> {
     let opt = Opt::parse();
 
     let runtime = runtime::Builder::new_multi_thread()
-        .worker_threads(2)
+        .worker_threads(1)
         .max_blocking_threads(1)
         .enable_time()
         .build()?;
 
     let output: SandboxOutput = {
         let _enter = runtime.enter();
-        carapace::run_standalone(&opt.config)?
+        carapace::run(&opt.config)?
     };
 
     match (opt.report, opt.report_fd) {

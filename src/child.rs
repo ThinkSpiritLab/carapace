@@ -1,5 +1,6 @@
 use crate::cgroup_v1::Cgroup;
 use crate::mount::{bind_mount, make_root_private, mount_proc, mount_tmpfs};
+use crate::seccomp;
 use crate::utils::{self, RawFd};
 use crate::SandboxConfig;
 
@@ -19,6 +20,8 @@ use path_absolutize::Absolutize;
 use rlimit::{Resource, Rlim};
 
 pub fn run_child(config: &SandboxConfig, cgroup: &Cgroup) -> Result<Infallible> {
+    unsafe { path_absolutize::update_cwd() };
+
     do_mount(&config)?;
 
     let exec = prepare_execve_args(config)?;
@@ -44,6 +47,12 @@ pub fn run_child(config: &SandboxConfig, cgroup: &Cgroup) -> Result<Infallible> 
 
     unistd::access(&config.bin, AccessFlags::F_OK)
         .with_context(|| format!("failed to access file: path = {}", config.bin.display()))?;
+
+    if config.seccomp_forbid_ipc {
+        let mut seccomp_ctx = seccomp::Context::new();
+        seccomp_ctx.forbid_ipc();
+        seccomp_ctx.install()?;
+    }
 
     reset().context("failed to reset cgroup metrics")?;
 
@@ -261,8 +270,8 @@ fn set_id(config: &SandboxConfig) -> Result<()> {
     // Time: 2021-03-13
 
     if let Some(gid) = config.gid.map(Gid::from_raw) {
-        setgroups(&[gid]).context("failed to set groups")?;
         setresgid(gid, gid, gid).context("failed to set gid")?;
+        setgroups(&[gid]).context("failed to set groups")?;
     }
 
     if let Some(uid) = config.uid.map(Uid::from_raw) {

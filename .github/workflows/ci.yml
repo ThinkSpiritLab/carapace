@@ -79,6 +79,10 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+      - name: Install libseccomp
+        run: |
+          sudo apt update
+          sudo apt install libseccomp-dev
       - uses: actions/cache@v2
         with:
           path: |
