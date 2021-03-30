@@ -11,7 +11,7 @@
 [mit-url]: LICENSE
 [docs-badge]: https://docs.rs/carapace/badge.svg
 [docs-url]: https://docs.rs/carapace/
-[ci-badge]: https://github.com/Nugine/carapace/workflows/CI/badge.svg
+[ci-badge]: https://github.com/ThinkSpiritLab/carapace/workflows/CI/badge.svg
 
 A code runner for online judge.
 
@@ -42,7 +42,7 @@ Install to `/usr/local/bin/carapace`
 ## Usage
 
 ```
-carapace 0.2.0-dev
+carapace 0.2.0
 Nugine <Nugine@163.com>
 
 USAGE:

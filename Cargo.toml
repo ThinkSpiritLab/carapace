@@ -1,12 +1,12 @@
 [package]
 name = "carapace"
-version = "0.2.0-dev"
+version = "0.2.0"
 authors = ["Nugine <Nugine@163.com>"]
 edition = "2018"
 readme = "README.md"
 license = "MIT"
 description = "A code runner for online judge"
-repository = "https://github.com/Nugine/carapace"
+repository = "https://github.com/ThinkSpiritLab/carapace"
 keywords = ["sandbox"]
 categories =  ["command-line-utilities"]
 
