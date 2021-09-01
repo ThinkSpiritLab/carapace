@@ -5,6 +5,8 @@ on:
   pull_request:
     branches:
       - master
+  schedule: # https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions#onschedule
+    - cron: '0 0 * * 0' # at midnight of each sunday
 
 name: CI
 
@@ -96,5 +98,4 @@ jobs:
           args: --tests
       - name: Integration test
         run: |
-          cargo test ___ 2>&1 | grep Running | awk '{print $2}' > test_paths
-          cat test_paths | xargs -I {} sudo {}  --test-threads=1
+          cargo test -- --test-threads=1 --nocapture

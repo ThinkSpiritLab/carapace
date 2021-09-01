@@ -170,7 +170,7 @@ async fn t03_forkbomb() -> Result<()> {
         assert_eq!(output.signal, 9);
 
         assert_le!(output.real_time, 1000 + 100);
-        assert_eq!(output.sys_time, 0);
+        assert_le!(output.sys_time, 50);
         assert_le!(output.user_time, 3000);
     })
 }
@@ -207,7 +207,7 @@ async fn t05_oom() -> Result<()> {
         assert_eq!(output.signal, 9);
 
         assert_le!(output.real_time, 1000 + 100);
-        assert_eq!(output.sys_time, 0);
+        assert_le!(output.sys_time, 50);
         assert_le!(output.user_time, 1000);
     })
 }
