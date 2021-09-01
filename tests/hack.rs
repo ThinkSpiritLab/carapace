@@ -211,3 +211,26 @@ async fn t05_oom() -> Result<()> {
         assert_le!(output.user_time, 1000);
     })
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn t06_zombie() -> Result<()> {
+    let name = "t06_zombie";
+    let src = assets!("zombie.c");
+    let bin = tmp!("t06_zombie");
+
+    let args = &SandboxConfig {
+        bin: bin.into(),
+        cg_limit_memory: Some(16 * 1024 * 1024), // 16 MiB
+        real_time_limit: Some(1000),
+        ..Default::default()
+    };
+
+    test_hack(name, src, bin, args, |output| {
+        assert_eq!(output.code, 0);
+        assert_eq!(output.signal, 0);
+
+        assert_le!(output.real_time, 1000 + 100);
+        assert_eq!(output.sys_time, 0);
+        assert_le!(output.user_time, 100);
+    })
+}

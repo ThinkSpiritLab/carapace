@@ -13,7 +13,7 @@ use anyhow::{Context, Result};
 use nix::sched::CloneFlags;
 use nix::unistd::Pid;
 use scopeguard::guard;
-use tracing::{trace, warn};
+use tracing::{debug, trace, warn};
 
 #[tracing::instrument(level = "trace", err, skip(config), fields(nonce))]
 pub fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
@@ -185,6 +185,12 @@ fn cg_cleanup(cg: Cgroup) -> Result<()> {
         }
         trace!(?pids);
         signal::killall(&pids);
+        for pid in pids {
+            let ret = wait_child(pid);
+            debug!(?pid, ?ret, "wait cgroup procs");
+        }
+    } else {
+        trace!("no remaining cgroup procs");
     }
 
     if let Err(err) = Cgroup::remove_dir(cg.cpu()) {
