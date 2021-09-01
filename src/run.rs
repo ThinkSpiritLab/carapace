@@ -22,7 +22,7 @@ pub fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
 
     trace!(?config);
 
-    validate(&config)?;
+    validate(config)?;
 
     let cgroup = Cgroup::create(&format!("carapace_{}", nonce))?;
 
@@ -34,7 +34,7 @@ pub fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
             let pipe_rx = ptr::read(&pipe_rx);
             drop(pipe_rx);
 
-            let result = run_child(&config, &cgroup);
+            let result = run_child(config, &cgroup);
 
             let _ = pipe_tx.write_error(result.unwrap_err());
             101
@@ -173,7 +173,7 @@ fn cg_collect(cg: &Cgroup) -> Result<Metrics> {
 
 fn cg_cleanup(cg: Cgroup) -> Result<()> {
     let content =
-        Cgroup::read_string(&cg.cpu(), "cgroup.procs").context("failed to read cgroup procs")?;
+        Cgroup::read_string(cg.cpu(), "cgroup.procs").context("failed to read cgroup procs")?;
 
     if !content.is_empty() {
         let mut pids = Vec::new();

@@ -22,7 +22,7 @@ use rlimit::{Resource, Rlim};
 pub fn run_child(config: &SandboxConfig, cgroup: &Cgroup) -> Result<Infallible> {
     unsafe { path_absolutize::update_cwd() };
 
-    do_mount(&config)?;
+    do_mount(config)?;
 
     let exec = prepare_execve_args(config)?;
 

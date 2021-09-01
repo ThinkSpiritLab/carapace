@@ -34,7 +34,7 @@ fn init() {
 }
 
 fn run(config: &SandboxConfig) -> Result<SandboxOutput> {
-    match carapace::run(&config) {
+    match carapace::run(config) {
         Ok(output) => {
             debug!("sandbox output = {:?}", output);
             Ok(output)
@@ -79,7 +79,7 @@ fn test_hack(
     info!("{} src = {}, bin = {}", name, src, bin);
     gcc_compile(src, bin)?;
     info!("{} run hack", name);
-    let output = run(&config)?;
+    let output = run(config)?;
     assert_ne!(output.code, 101);
     check(output);
     info!("{} finished", name);
