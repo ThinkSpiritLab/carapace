@@ -17,7 +17,7 @@ use nix::fcntl::{self, OFlag};
 use nix::sys::stat::Mode;
 use nix::unistd::{self, AccessFlags, Gid, Uid};
 use path_absolutize::Absolutize;
-use rlimit::{Resource, Rlim};
+use rlimit::Resource;
 
 pub fn run_child(config: &SandboxConfig, cgroup: &Cgroup) -> Result<Infallible> {
     unsafe { path_absolutize::update_cwd() };
@@ -166,7 +166,7 @@ fn set_hard_rlimit(config: &SandboxConfig) -> Result<()> {
     macro_rules! direct_set {
         ($res:expr, $field:ident) => {
             if let Some($field) = config.$field {
-                let $field = Rlim::from_raw($field.try_into()?);
+                let $field: u64 = $field.try_into()?;
                 $res.set($field, $field)?;
             }
         };

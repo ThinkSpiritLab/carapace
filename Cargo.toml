@@ -13,15 +13,15 @@ categories =  ["command-line-utilities"]
 [dependencies]
 aligned-utils = "1.0.2"
 anyhow = "1.0.38"
-clap = "=3.0.0-beta.2" # FIXME: waiting for clap v3
+clap = "=3.0.0-beta.4" # FIXME: waiting for clap v3
 dotenv = "0.15.0"
 libc = "0.2.88"
 memchr = "2.3.4"
-nix = "0.20.0"
+nix = "0.22.1"
 once_cell = "1.7.2"
 path-absolutize = { version = "3.0.7", features = ["unsafe_cache"] }
 rand = "0.8.3"
-rlimit = "0.5.4"
+rlimit = "0.6.2"
 scopeguard = "1.1.0"
 seccomp-sys = "0.1.3"
 serde = { version = "1.0.124", features = ["derive"] }
